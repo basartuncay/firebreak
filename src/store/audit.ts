@@ -37,6 +37,20 @@ export interface AuditQuery {
 
 const GENESIS = "0".repeat(64);
 
+/** Replaces unpaired UTF-16 surrogates with U+FFFD in every string of a JSON value. */
+export function wellFormed<T>(value: T): T {
+  if (typeof value === "string")
+    return value.replace(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+      "\uFFFD",
+    ) as T;
+  if (Array.isArray(value)) return value.map(wellFormed) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [wellFormed(k), wellFormed(v)])) as T;
+  }
+  return value;
+}
+
 /** JSON with object keys sorted, so the hash does not depend on key order. */
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -95,7 +109,9 @@ const bodyOf = (e: AuditEvent): Omit<AuditEvent, "id" | "hash" | "prevHash"> => 
 export class Audit {
   constructor(private readonly db: Database.Database) {}
 
-  append(input: AuditInput): AuditEvent {
+  append(raw: AuditInput): AuditEvent {
+    // Lone surrogates do not survive SQLite's UTF-8: hash exactly what will be stored.
+    const input = wellFormed(raw);
     // IMMEDIATE takes the write lock up front so two proxies cannot both read the same previous hash.
     const tx = this.db.transaction((): AuditEvent => {
       const last = this.db.prepare("SELECT hash FROM events ORDER BY id DESC LIMIT 1").get() as

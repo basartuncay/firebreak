@@ -31,6 +31,8 @@ export interface Harness {
   request(method: string, params?: unknown): Promise<any>;
   notify(method: string, params?: unknown): void;
   sendRaw(id: number, method: string, params?: unknown): Promise<any>;
+  writeLine(line: string): void;
+  nextMessage(): Promise<any>;
   close(): Promise<number>;
   exit: Promise<number>;
 }
@@ -57,10 +59,12 @@ export function startProxy(opts: {
   stderr.on("data", (d) => (errText += d.toString()));
 
   const waiting = new Map<number, (msg: any) => void>();
+  const anyWaiters: ((msg: any) => void)[] = [];
   const splitter = new LineSplitter();
   stdout.on("data", (chunk) => {
     for (const line of splitter.push(chunk)) {
       const msg = JSON.parse(line);
+      anyWaiters.shift()?.(msg);
       waiting.get(msg.id)?.(msg);
     }
   });
@@ -91,6 +95,8 @@ export function startProxy(opts: {
     exit,
     sendRaw,
     request: (method, params) => sendRaw(nextId++, method, params),
+    writeLine: (line) => stdin.write(`${line}\n`),
+    nextMessage: () => new Promise((resolve) => anyWaiters.push(resolve)),
     notify: (method, params) => stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`),
     close: () => {
       stdin.end();

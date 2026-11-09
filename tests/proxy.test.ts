@@ -104,6 +104,8 @@ describe("proxy", () => {
     const res = await h.request("tools/call", { name: "send_email", arguments: { to: "boss@acme.example" } });
     expect(res.error.message).toMatch(/upstream/i);
     expect(await h.exit).toBe(3);
+    // It was forwarded and may have run, so it is audited even without a result.
+    expect(h.store!.audit.list({ tool: "send_email" })).toHaveLength(1);
   });
 
   it("cancels a pending approval", async () => {
@@ -142,5 +144,47 @@ describe("proxy", () => {
     await readInbox(h);
     await h.request("tools/call", { name: "send_email", arguments: { to: "boss@acme.example" } });
     expect(h.store!.audit.verify()).toEqual({ ok: true, count: 2 });
+  });
+});
+
+describe("proxy input hardening", () => {
+  it("never forwards a tools/call without an id", async () => {
+    h = startProxy({});
+    await readInbox(h);
+    h.writeLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: null,
+        method: "tools/call",
+        params: { name: "delete_email", arguments: { id: "e1" } },
+      }),
+    );
+    h.writeLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: { name: "delete_email", arguments: { id: "e2" } },
+      }),
+    );
+    const after = await h.request("tools/list");
+    expect(after.result.tools).toBeDefined();
+    expect(h.store!.audit.list({ tool: "delete_email" })).toEqual([]);
+    expect(h.stderr()).toContain("without a request id");
+  });
+
+  it("answers a line that is not JSON instead of forwarding it", async () => {
+    h = startProxy({});
+    const reply = h.nextMessage();
+    h.writeLine(
+      '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"delete_email","arguments":{"n":NaN}}}',
+    );
+    expect((await reply).error.code).toBe(-32700);
+  });
+
+  it("survives null batch elements", async () => {
+    h = startProxy({});
+    h.writeLine("[null, 1]");
+    const list = await h.request("tools/list");
+    expect(list.result.tools).toHaveLength(3);
   });
 });

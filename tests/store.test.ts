@@ -41,6 +41,13 @@ describe("audit", () => {
     expect(store.audit.verify()).toEqual({ ok: false, brokenAt: second.id });
   });
 
+  it("keeps the chain valid for strings with lone surrogates", () => {
+    const store = openStore(tmpDb());
+    store.audit.append({ ...event(1), tool: "evil\ud800", args: { "k\udc00": "v\ud800" } });
+    store.audit.append(event(2));
+    expect(store.audit.verify()).toEqual({ ok: true, count: 2 });
+  });
+
   it("filters by decision and search", () => {
     const store = openStore(tmpDb());
     store.audit.append(event(1));

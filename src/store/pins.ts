@@ -62,7 +62,12 @@ export const toolHash = (def: ToolDef): string =>
 export class Pins {
   constructor(private readonly db: Database.Database) {}
 
+  /** Atomic across processes: two clients listing the same new tool at once both get the same answer. */
   check(server: string, def: ToolDef): { status: PinCheck; reasons: string[] } {
+    return this.db.transaction(() => this.checkUnlocked(server, def)).immediate();
+  }
+
+  private checkUnlocked(server: string, def: ToolDef): { status: PinCheck; reasons: string[] } {
     const hash = toolHash(def);
     const description = def.description ?? "";
     const now = new Date().toISOString();

@@ -67,6 +67,7 @@ async function wrap(argv: string[]): Promise<number> {
     stdin: process.stdin,
     stdout: process.stdout,
     stderr: process.stderr,
+    handleSignals: true,
   });
 }
 

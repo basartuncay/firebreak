@@ -36,6 +36,8 @@ export interface ProxyOptions {
    * process started (same parent process on this host), overridable with FIREBREAK_GROUP.
    */
   group?: string;
+  /** Stop the upstream cleanly on SIGINT/SIGTERM (the CLI sets this; tests do not). */
+  handleSignals?: boolean;
 }
 
 /** Shared tool output is kept this long; it contains copies of emails, issues and pages. */
@@ -213,8 +215,10 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
             });
           }
           if (Date.now() >= deadline) {
-            store!.approvals.expire(approvalId);
-            done({ status: "expired" });
+            // Someone may have decided in the same instant: record whatever the store ended up with.
+            if (store!.approvals.expire(approvalId)) return done({ status: "expired" });
+            const final = store!.approvals.get(approvalId);
+            done({ status: (final?.status ?? "expired") as ApprovalOutcome });
           }
         } catch (error) {
           log(`approval check failed: ${(error as Error).message}`);
@@ -224,7 +228,8 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
       awaiting.set(key(msg.id), {
         approvalId,
         cancel: () => {
-          store!.approvals.cancel(approvalId);
+          if (store!.approvals.cancel(approvalId)) return done({ status: "cancelled" });
+          // Already decided: an approval that just landed is still not executed, the client gave up.
           done({ status: "cancelled" });
         },
       });
@@ -232,6 +237,11 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
   }
 
   function handleClientMessage(msg: JsonRpcMessage) {
+    if (msg.method === "tools/call" && !isRequest(msg)) {
+      // A call without a usable id cannot get a reply, so it can only be refused: never forward it.
+      log(`refused a tools/call without a request id (${JSON.stringify(msg.params?.name ?? "")})`);
+      return;
+    }
     if (isRequest(msg) && msg.method === "tools/call") {
       void handleToolCall(msg).catch((error) => {
         log(`policy evaluation failed, denying: ${(error as Error).message}`);
@@ -279,6 +289,11 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
           resultBytes: JSON.stringify(msg.result ?? msg.error ?? null).length,
         });
       }
+      if (awaiting.has(k)) {
+        // The upstream answered a call it was never sent (it is still waiting for approval).
+        log(`dropped an upstream response to request ${k}, which was not forwarded`);
+        return;
+      }
       if (listRequests.delete(k) && Array.isArray(msg.result?.tools)) {
         msg = { ...msg, result: { ...msg.result, tools: inspectTools(msg.result.tools) } };
       }
@@ -308,7 +323,9 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
           if (check.status === "suspicious")
             log(`tool ${def.name} description looks like tool poisoning (${check.reasons.join(", ")})`);
         } catch (error) {
-          log(`pin check failed for ${def.name}: ${(error as Error).message}`);
+          // Unknown pin state: fail closed rather than treat the tool as approved.
+          s = "quarantined";
+          log(`pin check failed for ${def.name}, hiding it: ${(error as Error).message}`);
         }
       }
       status.set(def.name, s);
@@ -321,12 +338,24 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
   const each = (line: string, handle: (m: JsonRpcMessage) => void, raw: (l: string) => void) => {
     const frame = parseFrame(line);
     if (frame === null) return raw(line);
-    for (const m of Array.isArray(frame) ? frame : [frame]) handle(m);
+    for (const m of Array.isArray(frame) ? frame : [frame]) {
+      if (m !== null && typeof m === "object" && !Array.isArray(m)) handle(m);
+    }
+  };
+
+  // A line from the client that is not JSON could hide a call (JSON parsers differ): answer, never forward.
+  const refuseUnparsable = (line: string) => {
+    log(`refused a client message that is not valid JSON (${line.length} bytes)`);
+    toClient({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: "Parse error (refused by Firebreak)" },
+    });
   };
 
   const clientLines = new LineSplitter();
   opts.stdin.on("data", (chunk) => {
-    for (const line of clientLines.push(chunk)) each(line, handleClientMessage, toUpstream);
+    for (const line of clientLines.push(chunk)) each(line, handleClientMessage, refuseUnparsable);
   });
   opts.stdin.on("end", () => {
     if (upstreamAlive) child.stdin.end();
@@ -341,7 +370,11 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
     const finish = (code: number) => {
       upstreamAlive = false;
       const error = { code: -32603, message: "Firebreak: the upstream MCP server exited before answering" };
-      for (const k of inFlight.keys()) toClient({ jsonrpc: "2.0", id: JSON.parse(k), error });
+      for (const [k, call] of inFlight) {
+        // Forwarded but unanswered: it may have run, so it must still be in the audit log.
+        audit(call, { latencyMs: Date.now() - call.started });
+        toClient({ jsonrpc: "2.0", id: JSON.parse(k), error });
+      }
       inFlight.clear();
       for (const [k, pending] of awaiting) {
         pending.cancel();
@@ -354,5 +387,13 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
       finish(127);
     });
     child.on("exit", (code, signal) => finish(code ?? (signal ? 1 : 0)));
+    if (opts.handleSignals) {
+      for (const sig of ["SIGINT", "SIGTERM"] as const) {
+        process.once(sig, () => {
+          log(`received ${sig}, stopping the upstream server`);
+          child.kill("SIGTERM");
+        });
+      }
+    }
   });
 }
