@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`attack suite > built-in corpus meets its own expectations 1`] = `
+{
+  "allowed": 9,
+  "blocked": 63,
+}
+`;

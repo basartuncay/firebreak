@@ -96,8 +96,16 @@ export function evaluate(
   const { tool, policy } = ctx;
   const findings: Finding[] = [];
   const leaves = stringLeaves(call.args ?? {});
+  const sinkKeys = new Set(tool.sinks.map((s) => s.toLowerCase()));
+  const isSink = (path: string) => pathKeys(path).some((k) => sinkKeys.has(k));
   const provenance: ArgProvenance[] = leaves
-    .map((leaf) => ({ ...leaf, sources: ctx.taint.trace(leaf.value) }))
+    .map((leaf) => {
+      const sources = ctx.taint.trace(leaf.value);
+      // Short names (repo, owner, channel) only count where they decide the destination.
+      if (sources.length === 0 && tool.kind !== "read" && isSink(leaf.path))
+        sources.push(...ctx.taint.traceToken(leaf.value));
+      return { ...leaf, sources };
+    })
     .filter((p) => p.sources.length > 0);
 
   if (ctx.toolStatus === "quarantined") {
@@ -117,11 +125,10 @@ export function evaluate(
   const writes = tool.kind !== "read";
 
   if (writes) {
-    const sinks = new Set(tool.sinks.map((s) => s.toLowerCase()));
     for (const p of provenance) {
       const untrusted = p.sources.filter((s) => s.label === "untrusted");
       if (untrusted.length === 0) continue;
-      if (!pathKeys(p.path).some((k) => sinks.has(k))) continue;
+      if (!isSink(p.path)) continue;
       if (isAllowlisted(p.value, policy)) continue;
       findings.push({
         rule: "F1",

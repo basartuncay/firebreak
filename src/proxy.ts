@@ -12,7 +12,7 @@ import {
 } from "./jsonrpc.js";
 import { BudgetCounter } from "./policy/budget.js";
 import type { Policy } from "./policy/defaults.js";
-import { type Evaluation, evaluate, type ToolStatus } from "./policy/engine.js";
+import { type Evaluation, evaluate, stringLeaves, type ToolStatus } from "./policy/engine.js";
 import { redactDeep } from "./policy/secrets.js";
 import { TaintMemory } from "./provenance/taint.js";
 import type { ApprovalOutcome } from "./store/audit.js";
@@ -133,6 +133,7 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
     if (!store && evaluation.decision === "confirm") {
       evaluation = { ...evaluation, decision: "deny" };
     }
+    taint.noteArgs(stringLeaves(args).map((l) => l.value));
     const call: InFlight = { tool, args, evaluation, started: Date.now() };
 
     if (evaluation.decision === "allow") return forwardCall(msg, call);

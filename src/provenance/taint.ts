@@ -18,6 +18,9 @@ interface Entry {
   bytes: number;
 }
 
+/** A short identifier: one token, not just digits. */
+const TOKEN = /^(?=.*[a-z])[\w.#@/:-]{3,80}$/;
+
 /** Below this length a value is only matched through atoms, never as free text. */
 export const SUBSTRING_MIN_LENGTH = 40;
 
@@ -30,6 +33,8 @@ export class TaintMemory {
   private bytes = 0;
   private readonly maxResults: number;
   private readonly maxBytes: number;
+  /** Identifiers the session used before they ever appeared in tool output (e.g. the repo it was asked about). */
+  private known = new Set<string>();
 
   constructor(opts: { maxResults?: number; maxBytes?: number } = {}) {
     this.maxResults = opts.maxResults ?? 500;
@@ -54,6 +59,35 @@ export class TaintMemory {
     while (this.entries.length > this.maxResults || (this.bytes > this.maxBytes && this.entries.length > 1)) {
       this.bytes -= this.entries.shift()!.bytes;
     }
+  }
+
+  /**
+   * Call this with the argument values of every call the proxy forwards. Short identifiers that cannot
+   * be traced to tool output at that moment become "known", so later token matches on them are ignored.
+   * A value an attacker introduced is traceable from the moment it is read, so it never becomes known.
+   */
+  noteArgs(values: string[]): void {
+    for (const v of values) {
+      const token = normalize(v);
+      if (!TOKEN.test(token) || this.known.has(token)) continue;
+      if (this.trace(v).length === 0 && this.traceToken(v).length === 0) this.known.add(token);
+    }
+  }
+
+  /**
+   * Whole-word match for short identifiers (account, repo, channel, branch names) that are not
+   * atoms. Used only for sink arguments, where a short name decides where data goes.
+   */
+  traceToken(value: string): TaintSource[] {
+    const token = normalize(value);
+    if (!TOKEN.test(token) || this.known.has(token)) return [];
+    const escaped = token.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+    const word = new RegExp(`(^|[^\\w.@/-])${escaped}($|[^\\w@/-])`);
+    const hits: TaintSource[] = [];
+    for (const entry of this.entries) {
+      if (word.test(entry.text)) hits.push({ ...entry.origin, snippet: snippetAround(entry.display, token) });
+    }
+    return hits;
   }
 
   trace(value: string): TaintSource[] {
