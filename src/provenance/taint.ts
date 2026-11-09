@@ -12,7 +12,8 @@ type Origin = Omit<TaintSource, "snippet">;
 
 interface Entry {
   origin: Origin;
-  text: string; // normalized
+  text: string; // normalized, lower case: used for matching
+  display: string; // whitespace-collapsed original: used for snippets
   atoms: string[];
   bytes: number;
 }
@@ -39,8 +40,15 @@ export class TaintMemory {
     if (origin.label !== "untrusted" && origin.label !== "private") return;
     const raw = resultText(result);
     if (!raw) return;
+    const display = raw.replace(/\s+/g, " ").trim();
     const text = normalize(raw);
-    const entry: Entry = { origin: origin as Origin, text, atoms: extractAtoms(raw), bytes: text.length };
+    const entry: Entry = {
+      origin: origin as Origin,
+      text,
+      display,
+      atoms: extractAtoms(raw),
+      bytes: text.length * 2,
+    };
     this.entries.push(entry);
     this.bytes += entry.bytes;
     while (this.entries.length > this.maxResults || (this.bytes > this.maxBytes && this.entries.length > 1)) {
@@ -55,7 +63,7 @@ export class TaintMemory {
     for (const entry of this.entries) {
       const atom = entry.atoms.find((a) => needle === a || (a.length >= 6 && needle.includes(a)));
       const matched = atom ?? copiedWindow(needle, entry.text);
-      if (matched) hits.push({ ...entry.origin, snippet: snippetAround(entry.text, matched) });
+      if (matched) hits.push({ ...entry.origin, snippet: snippetAround(entry.display, matched) });
     }
     return hits;
   }
@@ -73,8 +81,10 @@ function copiedWindow(needle: string, text: string): string | null {
   return text.includes(tail) ? tail : null;
 }
 
+/** Case-insensitive search in the original text, so snippets keep the source's own spelling. */
 function snippetAround(text: string, needle: string): string {
-  const at = text.indexOf(needle);
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+");
+  const at = text.search(new RegExp(escaped, "i"));
   if (at < 0) return text.slice(0, 80);
   const start = Math.max(0, at - 30);
   const out = text.slice(start, Math.min(text.length, at + needle.length + 30));

@@ -125,8 +125,8 @@ export function createUiApp(store: Store, opts: { token: string; staticDir?: str
   if (opts.staticDir && existsSync(opts.staticDir)) {
     const root = opts.staticDir;
     app.use("/*", serveStatic({ root }));
-    const index = readFileSync(join(root, "index.html"), "utf8");
-    app.get("*", (c) => c.html(index));
+    // Read per request: tiny file, and a rebuilt UI is picked up without restarting.
+    app.get("*", (c) => c.html(readFileSync(join(root, "index.html"), "utf8")));
   }
 
   return app;

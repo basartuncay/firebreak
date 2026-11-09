@@ -132,10 +132,14 @@ export class Audit {
   list(q: AuditQuery = {}): AuditEvent[] {
     const where: string[] = [];
     const params: unknown[] = [];
-    if (q.server) where.push("server = ?"), params.push(q.server);
-    if (q.tool) where.push("tool = ?"), params.push(q.tool);
-    if (q.decision) where.push("decision = ?"), params.push(q.decision);
-    if (q.sinceId) where.push("id > ?"), params.push(q.sinceId);
+    const add = (clause: string, value: unknown) => {
+      where.push(clause);
+      params.push(value);
+    };
+    if (q.server) add("server = ?", q.server);
+    if (q.tool) add("tool = ?", q.tool);
+    if (q.decision) add("decision = ?", q.decision);
+    if (q.sinceId) add("id > ?", q.sinceId);
     if (q.search) {
       where.push("(args LIKE ? OR findings LIKE ? OR tool LIKE ? OR server LIKE ?)");
       const like = `%${q.search}%`;
