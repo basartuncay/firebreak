@@ -5,12 +5,13 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { Decision } from "../policy/defaults.js";
 import { openStore, type Store } from "../store/db.js";
 
-const COOKIE = "fb_token";
+const TOKEN_HEADER = "x-firebreak-token";
+/** DNS rebinding: a page on evil.example resolving to 127.0.0.1 still sends Host: evil.example. */
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const sameToken = (a: string, b: string): boolean => {
   const x = Buffer.from(a);
@@ -21,26 +22,25 @@ const sameToken = (a: string, b: string): boolean => {
 export function createUiApp(store: Store, opts: { token: string; staticDir?: string }) {
   const app = new Hono();
 
-  // Every route needs the token: other web pages on this machine must not read or approve anything.
-  app.use("*", async (c, next) => {
-    const query = c.req.query("token");
-    const cookie = getCookie(c, COOKIE);
-    if (query && sameToken(query, opts.token)) {
-      setCookie(c, COOKIE, opts.token, { httpOnly: true, sameSite: "Strict", path: "/" });
-    } else if (!cookie || !sameToken(cookie, opts.token)) {
-      if (c.req.path.startsWith("/api/")) return c.json({ error: "missing or invalid token" }, 401);
-      return c.text("Open the link printed by `firebreak ui` (it contains a one-time access token).", 401);
-    }
+  // The page and its assets are public; every /api route needs the token. The token travels in a header
+  // (never a cookie: browsers send cookies to every port on 127.0.0.1, so any local dev server would get it).
+  app.use("/api/*", async (c, next) => {
+    const host = (c.req.header("host") ?? "").replace(/:\d+$/, "").toLowerCase();
+    if (!LOCAL_HOSTS.has(host)) return c.json({ error: "unexpected Host header" }, 403);
+    const token =
+      c.req.header(TOKEN_HEADER) ?? (c.req.path === "/api/stream" ? c.req.query("token") : undefined);
+    if (!token || !sameToken(token, opts.token)) return c.json({ error: "missing or invalid token" }, 401);
     if (c.req.method !== "GET" && c.req.method !== "HEAD") {
       const origin = c.req.header("origin");
       if (origin) {
-        let host = "";
+        let originHost = "";
         try {
-          host = new URL(origin).host;
+          originHost = new URL(origin).host;
         } catch {
           // malformed origin: treated as foreign
         }
-        if (host !== c.req.header("host")) return c.json({ error: "cross-origin request refused" }, 403);
+        if (originHost !== c.req.header("host"))
+          return c.json({ error: "cross-origin request refused" }, 403);
       }
     }
     await next();
@@ -96,9 +96,11 @@ export function createUiApp(store: Store, opts: { token: string; staticDir?: str
         acc[p.status] = (acc[p.status] ?? 0) + 1;
         return acc;
       }, {}),
-      chain: store.audit.verify(),
     });
   });
+
+  // Verifying walks the whole chain, so it is its own request instead of part of every stats poll.
+  app.get("/api/chain", (c) => c.json(store.audit.verify()));
 
   // Live updates: polls the store (other processes write to it) and pushes what changed.
   app.get("/api/stream", (c) =>

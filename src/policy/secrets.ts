@@ -22,7 +22,7 @@ export function redactDeep<T>(value: T): T {
   if (typeof value === "string") return redact(value) as T;
   if (Array.isArray(value)) return value.map(redactDeep) as T;
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactDeep(v)])) as T;
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [redact(k), redactDeep(v)])) as T;
   }
   return value;
 }

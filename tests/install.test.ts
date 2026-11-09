@@ -29,8 +29,7 @@ describe("planInstall", () => {
       args: [
         "/opt/firebreak/dist/cli.js",
         "wrap",
-        "--name",
-        "github",
+        "--name=github",
         "--",
         "npx",
         "-y",
@@ -61,6 +60,18 @@ describe("planInstall", () => {
     const wrapped = planInstall(structuredClone(config), launcher).config;
     expect(planInstall(structuredClone(wrapped), launcher).wrapped).toEqual([]);
     expect(planUninstall(wrapped).config).toEqual(config);
+  });
+
+  it("leaves other wrappers alone", () => {
+    const foreign = {
+      mcpServers: { x: { command: "node", args: ["/opt/tool/cli.js", "wrap", "--", "inner", "x"] } },
+    };
+    expect(planUninstall(structuredClone(foreign)).config).toEqual(foreign);
+  });
+
+  it("wraps a server whose key starts with a dash", () => {
+    const out = planInstall({ mcpServers: { "-odd": { command: "srv" } } }).config;
+    expect(out.mcpServers?.["-odd"]?.args).toContain("--name=-odd");
   });
 
   it("handles a config without servers", () => {

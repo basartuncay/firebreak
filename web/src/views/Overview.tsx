@@ -1,4 +1,5 @@
-import type { Stats } from "../api";
+import { useEffect, useState } from "react";
+import { api, type Stats } from "../api";
 
 const RULES: [string, string][] = [
   ["F1", "Destination came from untrusted output"],
@@ -10,6 +11,10 @@ const RULES: [string, string][] = [
 ];
 
 export function Overview({ stats }: { stats: Stats | null }) {
+  const [chain, setChain] = useState<Stats["chain"]>();
+  useEffect(() => {
+    api.chain().then(setChain, () => {});
+  }, []);
   if (!stats) return <p className="muted">Loading…</p>;
   const max = Math.max(1, ...Object.values(stats.rules));
   const d = stats.decisions;
@@ -53,15 +58,17 @@ export function Overview({ stats }: { stats: Stats | null }) {
       </ul>
 
       <h2 className="sub">Audit log</h2>
-      {stats.chain.ok ? (
+      {!chain ? (
+        <p className="muted">Checking…</p>
+      ) : chain.ok ? (
         <p>
-          <span className="chip allow">intact</span> {stats.chain.count} events, every hash links to the one
-          before it.
+          <span className="chip allow">intact</span> {chain.count} events, every hash links to the one before
+          it.
         </p>
       ) : (
         <p role="alert">
-          <span className="chip deny">broken</span> Event #{stats.chain.brokenAt} or an earlier one was
-          changed or deleted outside Firebreak.
+          <span className="chip deny">broken</span> Event #{chain.brokenAt} or an earlier one was changed or
+          deleted outside Firebreak.
         </p>
       )}
     </section>

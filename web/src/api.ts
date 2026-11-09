@@ -63,15 +63,38 @@ export interface Stats {
   rules: Record<string, number>;
   pending: number;
   tools: Partial<Record<Pin["status"], number>>;
-  chain: { ok: true; count: number } | { ok: false; brokenAt: number };
+  chain?: { ok: true; count: number } | { ok: false; brokenAt: number };
+}
+
+const TOKEN_KEY = "firebreak-token";
+let memoryToken: string | null = null;
+
+/** The token arrives once in the URL; it is kept for this tab only and sent as a header. */
+export function token(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
+  } catch {
+    return memoryToken;
+  }
+}
+
+export function adoptTokenFromUrl(): void {
+  const params = new URLSearchParams(location.search);
+  const t = params.get("token");
+  if (!t) return;
+  memoryToken = t;
+  try {
+    sessionStorage.setItem(TOKEN_KEY, t);
+  } catch {
+    // storage blocked: the token still works until this page is reloaded
+  }
+  history.replaceState(null, "", location.pathname + location.hash);
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    credentials: "same-origin",
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
-  });
+  const headers: Record<string, string> = { "x-firebreak-token": token() ?? "" };
+  if (init?.body) headers["content-type"] = "application/json";
+  const res = await fetch(path, { ...init, credentials: "omit", headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   return body as T;
@@ -94,11 +117,12 @@ export const api = {
       method: "POST",
     }),
   stats: () => call<Stats>("api/stats"),
+  chain: () => call<Stats["chain"]>("api/chain"),
 };
 
 /** Subscribes to live updates; returns an unsubscribe function. */
 export function subscribe(onChange: () => void): () => void {
-  const source = new EventSource("api/stream");
+  const source = new EventSource(`api/stream?token=${encodeURIComponent(token() ?? "")}`);
   source.addEventListener("events", onChange);
   source.addEventListener("approvals", onChange);
   return () => source.close();

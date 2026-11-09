@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { adoptTokenFromUrl } from "./api";
 import "./styles.css";
 
-// The access token is now in an HttpOnly cookie; keep it out of the address bar and history.
-if (new URLSearchParams(location.search).has("token")) history.replaceState(null, "", location.pathname);
+adoptTokenFromUrl();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

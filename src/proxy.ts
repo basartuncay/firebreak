@@ -53,6 +53,12 @@ interface InFlight {
 
 const key = (id: unknown): string => JSON.stringify(id);
 
+/** cmd.exe quoting: wrap in double quotes, double any inner quote, escape cmd metacharacters. */
+export function quoteWin(arg: string): string {
+  if (/^[\w./:=@-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '""').replace(/([&|<>^%])/g, "^$1")}"`;
+}
+
 export function blockedResult(evaluation: Evaluation, note?: string) {
   const rules = [...new Set(evaluation.findings.map((f) => f.rule))].join(", ");
   const reasons = evaluation.findings.map((f) => f.message).join("; ");
@@ -103,11 +109,17 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
     }
   };
 
-  const child = spawn(opts.command, opts.args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
-    shell: process.platform === "win32",
-  });
+  // Windows needs a shell to find npx.cmd and friends; quote every argument so spaces and & | survive.
+  const windows = process.platform === "win32";
+  const child = spawn(
+    windows ? quoteWin(opts.command) : opts.command,
+    windows ? opts.args.map(quoteWin) : opts.args,
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env,
+      shell: windows,
+    },
+  );
   let upstreamAlive = true;
   child.stderr.on("data", (d) => opts.stderr.write(d));
 

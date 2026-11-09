@@ -26,7 +26,7 @@ beforeEach(() => {
 const authed = (path: string, init: RequestInit = {}) =>
   app.request(path, {
     ...init,
-    headers: { host: "127.0.0.1:4319", cookie: `fb_token=${TOKEN}`, ...(init.headers ?? {}) },
+    headers: { host: "127.0.0.1:4319", "x-firebreak-token": TOKEN, ...(init.headers ?? {}) },
   });
 
 describe("ui server", () => {
@@ -35,15 +35,22 @@ describe("ui server", () => {
     expect(res.status).toBe(401);
   });
 
-  it("sets cookie from query token", async () => {
+  it("does not accept the token as a query parameter on normal routes", async () => {
     const res = await app.request(`/api/stats?token=${TOKEN}`, { headers: { host: "127.0.0.1:4319" } });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("set-cookie")).toMatch(/fb_token=t0k3n.*HttpOnly.*SameSite=Strict/i);
+    expect(res.status).toBe(401);
   });
 
-  it("rejects a wrong token", async () => {
-    const res = await app.request("/api/stats?token=nope", { headers: { host: "127.0.0.1:4319" } });
-    expect(res.status).toBe(401);
+  it("does not set any cookie", async () => {
+    const res = await authed("/api/stats");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("rejects a foreign Host header (DNS rebinding)", async () => {
+    const res = await app.request("/api/stats", {
+      headers: { host: "evil.example:4319", "x-firebreak-token": TOKEN },
+    });
+    expect(res.status).toBe(403);
   });
 
   it("lists and decides approvals", async () => {
@@ -96,7 +103,7 @@ describe("ui server", () => {
     const stats = await (await authed("/api/stats")).json();
     expect(stats.decisions).toMatchObject({ allow: 1, confirm: 1 });
     expect(stats.rules).toMatchObject({ F1: 1 });
-    expect(stats.chain.ok).toBe(true);
+    expect((await (await authed("/api/chain")).json()).ok).toBe(true);
   });
 
   it("approves a changed tool", async () => {

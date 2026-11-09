@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export type Client = "claude-desktop" | "claude-code" | "cursor";
@@ -23,13 +23,17 @@ export interface Launcher {
 
 export const NPX_LAUNCHER: Launcher = { command: "npx", args: ["-y", PACKAGE] };
 
+/**
+ * Only entries this tool wrote: a Firebreak launcher, then "wrap", then "--name=<key>", then "--".
+ * Anything else with "wrap" in it (another tool's wrapper) is left alone by install and uninstall.
+ */
 function isWrapped(entry: ServerEntry): boolean {
   const args = entry.args ?? [];
-  const sep = args.indexOf("--");
-  const head = sep < 0 ? args : args.slice(0, sep);
-  return (
-    entry.command === "firebreak" ||
-    (head.includes("wrap") && head.some((a) => a === PACKAGE || /cli\.js$/.test(a)))
+  const wrap = args.indexOf("wrap");
+  if (wrap < 0 || !args[wrap + 1]?.startsWith("--name=") || !args.includes("--")) return false;
+  const launcher = [entry.command ?? "", ...args.slice(0, wrap)];
+  return launcher.some(
+    (a) => a === "firebreak" || a === PACKAGE || /[\\/](mcp-)?firebreak[\\/]dist[\\/]cli\.js$/.test(a),
   );
 }
 
@@ -49,7 +53,7 @@ export function planInstall(
     servers[name] = {
       ...entry,
       command: launcher.command,
-      args: [...launcher.args, "wrap", "--name", name, "--", entry.command, ...(entry.args ?? [])],
+      args: [...launcher.args, "wrap", `--name=${name}`, "--", entry.command, ...(entry.args ?? [])],
     };
     wrapped.push(name);
   }
@@ -91,7 +95,10 @@ export function applyToFile(
   if (opts.dryRun || changed.length === 0) return { changed };
   const backup = `${file}.firebreak-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   copyFileSync(file, backup);
-  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  // Write next to the file and rename over it, so a crash never leaves a half-written config.
+  const temp = `${file}.firebreak-tmp-${process.pid}`;
+  writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`);
+  renameSync(temp, file);
   return { changed, backup };
 }
 

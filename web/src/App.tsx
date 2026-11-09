@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Stats, subscribe } from "./api";
+import { api, type Stats, subscribe, token } from "./api";
 import { Activity } from "./views/Activity";
 import { Approvals } from "./views/Approvals";
 import { Overview } from "./views/Overview";
@@ -81,7 +81,13 @@ export function App() {
           {offline ? "Not connected" : "Live"}
         </span>
       </header>
-      {offline && (
+      {!token() && (
+        <p className="banner">
+          This page needs the access link printed by <code>firebreak ui</code> (it ends in{" "}
+          <code>?token=…</code>).
+        </p>
+      )}
+      {offline && token() && (
         <p className="banner">
           The dashboard lost its connection to <code>firebreak ui</code>. Check that it is still running, then
           reload.
