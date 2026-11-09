@@ -14,6 +14,11 @@ was completely fooled and asks whether the gateway alone stops the harmful call.
 
 ## What the numbers mean, and what they don't
 
+- **All servers of the client are assumed wrapped.** Scenarios that read through one server and write
+  through another (mail → calendar, GitHub → HTTP) rely on proxies of one client sharing provenance
+  through the state store, which `tests/cross-server.test.ts` checks with two real proxies. Before that
+  sharing existed (found in an independent review), each proxy only saw its own server, and the same
+  corpus would have scored 42/73. A server you run without Firebreak is invisible to it.
 - **Small, self-written corpus.** 62 attacks come from the author's earlier project
   [Cordon](https://github.com/basartuncay/Cordon) (mail and calendar, English, Turkish, German),
   converted by `scripts/import-cordon.py`. 11 attacks and 10 benign tasks were written for Firebreak.

@@ -76,17 +76,25 @@ and the agent is told why.
 
 Every `tools/call` is evaluated before it reaches the server. The strictest finding wins.
 
-| Rule                            | Fires when                                                                                                                                     | Default        |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| **F1** Destination provenance   | A destination argument (`to`, `url`, `path`, `repo`, `owner`, `channel`, …) of a write came from untrusted output and is not on your allowlist | confirm        |
-| **F2** Secrets and private data | An argument of an open-world write contains a credential → deny. Data from a `private` server goes to an open-world write → confirm            | deny / confirm |
-| **F3** Destructive              | `delete_*`, `remove_*`, `drop_*`, … or a `destructiveHint`                                                                                     | confirm        |
-| **F4** Cross-server flow        | Data read from one server is written through another                                                                                           | confirm        |
-| **F5** Budgets                  | More than 50 writes per session or 10 per minute                                                                                               | deny           |
-| **F6** Tool integrity           | A tool's definition changed since you approved it → hidden and denied. Its description addresses the model → confirm                           | deny / confirm |
+| Rule                            | Fires when                                                                                                                                                       | Default        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **F1** Destination provenance   | A destination argument (`to`, `url`, `path`, `repo`, `owner`, `channel`, …) of a write came from untrusted output and is not on your allowlist                   | confirm        |
+| **F2** Secrets and private data | An argument of an open-world tool (including reads like `fetch`) contains a credential → deny. Data from a `private` server goes to an open-world tool → confirm | deny / confirm |
+| **F3** Destructive              | `delete_*`, `remove_*`, `drop_*`, … or a `destructiveHint`                                                                                                       | confirm        |
+| **F4** Cross-server flow        | Data read from one server is written through another                                                                                                             | confirm        |
+| **F5** Budgets                  | More than 50 writes per session or 10 per minute                                                                                                                 | deny           |
+| **F6** Tool integrity           | A tool's definition changed since you approved it → hidden and denied. Its description addresses the model → confirm                                             | deny / confirm |
 
 Tools are classified as read, write or destructive by name, then by your policy; server annotations can
-only make a tool stricter, never relax it. Reads are never blocked by F1, F2, F4 or F5.
+only make a tool stricter, never relax it. Reads are not checked by F1, F4 or F5 (following a link from
+a page is fine); open-world reads are checked by F2.
+
+A destination is recognised by argument name (split on `_`, `-` and camelCase, so `recipient_email`,
+`toAddress` and `channel_id` count) or by value: any non-content argument holding an address or URL.
+Allowlists require every address in a value to be allowed and judge URLs by host only.
+
+All servers one client starts share provenance through the state store, so data read through one
+server is recognised when it is written through another. Servers you do not wrap are invisible.
 
 Short names such as an owner or a channel only count as tainted if the session first saw them in tool
 output: names the agent used before reading anything untrusted (the repository you asked about) stay
@@ -139,7 +147,9 @@ Read [docs/threat-model.md](docs/threat-model.md) before relying on Firebreak. T
 - It matches values that appear verbatim. An agent that decodes, translates or paraphrases an
   attacker's value is not caught.
 - It does not judge prose: a false instruction inside an email to the right person passes.
-- It wraps stdio servers only (no remote HTTP servers yet).
+- It wraps stdio servers only (no remote HTTP servers yet), and only sees servers it wraps.
+- It guards against hostile _content_, not hostile server _code_: a malicious program you install runs
+  as you and can edit Firebreak's state.
 - Asking you is friction. Replies to new contacts will need approval unless you allowlist them.
 
 ## Commands
@@ -176,7 +186,7 @@ TypeScript SDK v2 client and server. Design and plan: [docs/design.md](docs/desi
 
 ```bash
 npm ci
-npm test            # 119 tests: engine, store, proxy, CLI, UI API, SDK compatibility, attack suite
+npm test            # 141 tests: engine, store, proxy, CLI, UI API, SDK compatibility, attack suite
 npm run lint && npm run typecheck && npm run build
 FIREBREAK_HOME=/tmp/fb npx tsx scripts/seed-demo.ts && FIREBREAK_HOME=/tmp/fb node dist/cli.js ui
 ```

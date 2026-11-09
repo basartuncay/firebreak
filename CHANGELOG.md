@@ -13,3 +13,7 @@ First release.
 - Tool pinning (rug-pull quarantine) and tool-poisoning detection.
 - `firebreak test` attack suite (73 attacks, 10 benign tasks) and a GitHub Action.
 - `firebreak install` / `uninstall` for Claude Desktop, Claude Code and Cursor.
+- Hardening after an independent review: provenance shared between the servers of one client, destination
+  detection by name parts and value, stricter allowlists, F2 on open-world reads, bounded extraction
+  (ReDoS), header-only dashboard token with Host checks, fail-closed pin errors, audit of unanswered
+  calls, and refusal of id-less or unparsable tool calls.
