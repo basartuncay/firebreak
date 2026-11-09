@@ -1,0 +1,54 @@
+name: Firebreak attack suite
+description: >-
+  Replays prompt-injection and exfiltration scenarios against your Firebreak policy and reports which
+  attacks it blocks and which benign tasks it lets through. Deterministic: no model, no API key.
+author: basartuncay
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  policy:
+    description: Path to your firebreak policy.yaml (relative to the workspace). Empty = built-in defaults.
+    default: ""
+  scenarios:
+    description: Extra scenario directory with your own cases (relative to the workspace). Optional.
+    default: ""
+  builtin:
+    description: Include the built-in corpus.
+    default: "true"
+  fail-on-miss:
+    description: Fail the step when a scenario does not get its expected result.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Install Firebreak
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund && npm run build
+
+    - name: Run attack suite
+      shell: bash
+      env:
+        POLICY: ${{ inputs.policy }}
+        SCENARIOS: ${{ inputs.scenarios }}
+        BUILTIN: ${{ inputs.builtin }}
+        FAIL_ON_MISS: ${{ inputs.fail-on-miss }}
+        FIREBREAK_HOME: ${{ runner.temp }}/firebreak
+      run: |
+        args=(test --format markdown)
+        if [ -n "$POLICY" ]; then args+=(--policy "$GITHUB_WORKSPACE/$POLICY"); fi
+        if [ -n "$SCENARIOS" ]; then args+=(--scenarios "$GITHUB_WORKSPACE/$SCENARIOS"); fi
+        if [ "$BUILTIN" != "true" ]; then args+=(--no-builtin); fi
+        set +e
+        node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}" > "$RUNNER_TEMP/firebreak-report.md"
+        code=$?
+        set -e
+        cat "$RUNNER_TEMP/firebreak-report.md" | tee -a "$GITHUB_STEP_SUMMARY"
+        if [ "$code" -ne 0 ] && [ "$FAIL_ON_MISS" = "true" ]; then exit "$code"; fi
