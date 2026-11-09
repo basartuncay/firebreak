@@ -42,7 +42,9 @@ describe("scanDescription", () => {
   });
 
   it("flags hidden unicode", () => {
-    expect(scanDescription(`Reads a file.${String.fromCharCode(0x200b, 0x200b)}secret`)).toContain("hidden-unicode");
+    expect(scanDescription(`Reads a file.${String.fromCharCode(0x200b, 0x200b)}secret`)).toContain(
+      "hidden-unicode",
+    );
     expect(scanDescription(`tag${String.fromCodePoint(0xe0041)}`)).toContain("hidden-unicode");
   });
 

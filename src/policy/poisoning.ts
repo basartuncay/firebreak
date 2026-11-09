@@ -20,7 +20,8 @@ const CREDENTIALS = [
 ];
 
 // Zero-width, bidi controls, invisible operators, Unicode tag characters.
-const HIDDEN = /[​-‏‪-‮⁠-⁤﻿]|[\u{E0000}-\u{E007F}]/u;
+// Written as escapes inside String.raw so no tool can turn them into invisible literals in the source.
+const HIDDEN = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]|[\u{E0000}-\u{E007F}]/u;
 
 export function scanDescription(text: string): string[] {
   const reasons: string[] = [];

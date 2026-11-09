@@ -5,7 +5,7 @@
   "javascript": { "formatter": { "quoteStyle": "double" } },
   "linter": {
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": { "noNonNullAssertion": "off" },
       "suspicious": { "noExplicitAny": "off" }
     }
