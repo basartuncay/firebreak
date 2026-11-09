@@ -8,7 +8,7 @@ export interface TaintSource {
   snippet: string;
 }
 
-type Origin = Omit<TaintSource, "snippet">;
+export type Origin = Omit<TaintSource, "snippet">;
 
 interface Entry {
   origin: Origin;
@@ -24,45 +24,63 @@ const TOKEN = /^(?=.*[a-z])[\w.#@/:-]{3,80}$/;
 /** Below this length a value is only matched through atoms, never as free text. */
 export const SUBSTRING_MIN_LENGTH = 40;
 
+/** Text kept per result for substring matching; atoms are extracted from the same capped text. */
+export const MAX_RESULT_CHARS = 512 * 1024;
+
+const isLabel = (l: string): l is Origin["label"] => l === "untrusted" || l === "private";
+
 /**
- * Remembers what tool results returned in one session so later call arguments can be traced back
- * to them. Matching is by value: paraphrased, encoded or split values are not recognised.
+ * Remembers what tool results returned so later call arguments can be traced back to them.
+ * Matching is by value: paraphrased, encoded or split values are not recognised.
+ *
+ * Full texts are kept for the most recent results. When a result is evicted, its atoms (addresses,
+ * URLs, paths, long tokens) move to a much larger archive, so flooding the session with reads cannot
+ * push an injected address out of memory.
  */
 export class TaintMemory {
   private entries: Entry[] = [];
   private bytes = 0;
+  private archive = new Map<string, Origin>();
   private readonly maxResults: number;
   private readonly maxBytes: number;
+  private readonly maxArchivedAtoms: number;
   /** Identifiers the session used before they ever appeared in tool output (e.g. the repo it was asked about). */
   private known = new Set<string>();
 
-  constructor(opts: { maxResults?: number; maxBytes?: number } = {}) {
+  constructor(opts: { maxResults?: number; maxBytes?: number; maxArchivedAtoms?: number } = {}) {
     this.maxResults = opts.maxResults ?? 500;
     this.maxBytes = opts.maxBytes ?? 4 * 1024 * 1024;
+    this.maxArchivedAtoms = opts.maxArchivedAtoms ?? 100_000;
   }
 
-  record(origin: Origin | (Omit<Origin, "label"> & { label: string }), result: unknown): void {
-    if (origin.label !== "untrusted" && origin.label !== "private") return;
-    const raw = resultText(result);
-    if (!raw) return;
-    const display = raw.replace(/\s+/g, " ").trim();
-    const text = normalize(raw);
+  record(origin: Omit<Origin, "label"> & { label: string }, result: unknown): void {
+    this.recordText(origin, resultText(result));
+  }
+
+  recordText(origin: Omit<Origin, "label"> & { label: string }, raw: string): void {
+    if (!isLabel(origin.label) || !raw) return;
+    const capped = raw.length > MAX_RESULT_CHARS ? raw.slice(0, MAX_RESULT_CHARS) : raw;
     const entry: Entry = {
-      origin: origin as Origin,
-      text,
-      display,
-      atoms: extractAtoms(raw),
-      bytes: text.length * 2,
+      origin: { server: origin.server, tool: origin.tool, callId: origin.callId, label: origin.label },
+      text: normalize(capped),
+      display: capped.replace(/\s+/g, " ").trim(),
+      atoms: extractAtoms(capped),
+      bytes: capped.length * 2,
     };
     this.entries.push(entry);
     this.bytes += entry.bytes;
     while (this.entries.length > this.maxResults || (this.bytes > this.maxBytes && this.entries.length > 1)) {
-      this.bytes -= this.entries.shift()!.bytes;
+      const old = this.entries.shift()!;
+      this.bytes -= old.bytes;
+      for (const atom of old.atoms) this.archive.set(atom, old.origin);
+    }
+    while (this.archive.size > this.maxArchivedAtoms) {
+      this.archive.delete(this.archive.keys().next().value!);
     }
   }
 
   /**
-   * Call this with the argument values of every call the proxy forwards. Short identifiers that cannot
+   * Call this with the argument values of every call the proxy evaluates. Short identifiers that cannot
    * be traced to tool output at that moment become "known", so later token matches on them are ignored.
    * A value an attacker introduced is traceable from the moment it is read, so it never becomes known.
    */
@@ -98,6 +116,14 @@ export class TaintMemory {
       const atom = entry.atoms.find((a) => needle === a || (a.length >= 6 && needle.includes(a)));
       const matched = atom ?? copiedWindow(needle, entry.text);
       if (matched) hits.push({ ...entry.origin, snippet: snippetAround(entry.display, matched) });
+    }
+    if (hits.length === 0) {
+      for (const [atom, origin] of this.archive) {
+        if (needle === atom || (atom.length >= 6 && needle.includes(atom))) {
+          hits.push({ ...origin, snippet: `${atom} (from an earlier result)` });
+          break;
+        }
+      }
     }
     return hits;
   }

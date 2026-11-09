@@ -5,8 +5,9 @@ import { dbPath } from "../paths.js";
 import { Approvals } from "./approvals.js";
 import { Audit } from "./audit.js";
 import { Pins } from "./pins.js";
+import { SharedTaint } from "./taint.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -58,11 +59,28 @@ CREATE TABLE IF NOT EXISTS pins (
 );
 `;
 
+const MIGRATION_2 = `
+CREATE TABLE IF NOT EXISTS taint (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_key TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  server TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  call_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS taint_group ON taint(group_key, id);
+CREATE INDEX IF NOT EXISTS taint_ts ON taint(ts);
+`;
+
 export interface Store {
   db: Database.Database;
   audit: Audit;
   approvals: Approvals;
   pins: Pins;
+  taint: SharedTaint;
   close(): void;
 }
 
@@ -74,19 +92,22 @@ export function openStore(file: string = dbPath()): Store {
   db.pragma("busy_timeout = 5000");
   db.pragma("foreign_keys = ON");
   db.exec(MIGRATION_1);
+  db.exec(MIGRATION_2);
   const version = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
     | { value: string }
     | undefined;
-  if (!version)
-    db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?)").run(String(SCHEMA_VERSION));
-  else if (Number(version.value) > SCHEMA_VERSION) {
+  if (version && Number(version.value) > SCHEMA_VERSION) {
     throw new Error(`${file} was written by a newer Firebreak (schema ${version.value}); upgrade firebreak`);
   }
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(
+    String(SCHEMA_VERSION),
+  );
   return {
     db,
     audit: new Audit(db),
     approvals: new Approvals(db),
     pins: new Pins(db),
+    taint: new SharedTaint(db),
     close: () => db.close(),
   };
 }

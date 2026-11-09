@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import type { Readable, Writable } from "node:stream";
 import { classifyTool, type ToolDef } from "./classify.js";
 import {
@@ -14,7 +15,8 @@ import { BudgetCounter } from "./policy/budget.js";
 import type { Policy } from "./policy/defaults.js";
 import { type Evaluation, evaluate, stringLeaves, type ToolStatus } from "./policy/engine.js";
 import { redactDeep } from "./policy/secrets.js";
-import { TaintMemory } from "./provenance/taint.js";
+import { resultText } from "./provenance/extract.js";
+import { MAX_RESULT_CHARS, TaintMemory } from "./provenance/taint.js";
 import type { ApprovalOutcome } from "./store/audit.js";
 import type { Store } from "./store/db.js";
 
@@ -29,7 +31,15 @@ export interface ProxyOptions {
   stdout: Writable;
   stderr: Writable;
   approvalPollMs?: number;
+  /**
+   * Proxies with the same group share provenance through the store. Default: every server one client
+   * process started (same parent process on this host), overridable with FIREBREAK_GROUP.
+   */
+  group?: string;
 }
+
+/** Shared tool output is kept this long; it contains copies of emails, issues and pages. */
+export const SHARED_TAINT_TTL_MS = 12 * 3600 * 1000;
 
 interface InFlight {
   tool: string;
@@ -67,6 +77,29 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
   const log = (msg: string) => opts.stderr.write(`[firebreak:${server}] ${msg}\n`);
   if (!store) log("store unavailable: every call that is not plainly allowed will be denied");
   const trust = policy.servers[server]?.trust ?? "untrusted";
+  const group = opts.group ?? process.env.FIREBREAK_GROUP ?? `${hostname()}:${process.ppid}`;
+  let synced = 0;
+  let syncWarned = false;
+  try {
+    store?.taint.prune(SHARED_TAINT_TTL_MS);
+  } catch (error) {
+    log(`could not prune shared provenance: ${(error as Error).message}`);
+  }
+
+  /** Pulls what sibling proxies (other servers of the same client) have read since the last call. */
+  const syncSharedTaint = () => {
+    if (!store) return;
+    try {
+      for (const row of store.taint.since(group, sessionId, synced)) {
+        taint.recordText(row.origin, row.text);
+        synced = row.id;
+      }
+    } catch (error) {
+      if (!syncWarned)
+        log(`shared provenance unavailable, using this server only: ${(error as Error).message}`);
+      syncWarned = true;
+    }
+  };
 
   const child = spawn(opts.command, opts.args, {
     stdio: ["pipe", "pipe", "pipe"],
@@ -117,6 +150,7 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
   };
 
   async function handleToolCall(msg: JsonRpcMessage) {
+    syncSharedTaint();
     const tool = String(msg.params?.name ?? "");
     const args = msg.params?.arguments ?? {};
     const def = tools.get(tool);
@@ -223,8 +257,22 @@ export function runProxy(opts: ProxyOptions): Promise<number> {
       const call = inFlight.get(k);
       if (call) {
         inFlight.delete(k);
-        if (msg.result && trust !== "trusted") {
-          taint.record({ server, tool: call.tool, callId: k, label: trust }, msg.result);
+        if (trust !== "trusted") {
+          // Error messages are tool output too: a server can echo attacker text in them.
+          const errorText = typeof msg.error?.message === "string" ? msg.error.message : "";
+          const text = [resultText(msg.result), errorText]
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, MAX_RESULT_CHARS);
+          const origin = { server, tool: call.tool, callId: k, label: trust };
+          taint.recordText(origin, text);
+          if (store && text) {
+            try {
+              store.taint.add(group, sessionId, origin, text);
+            } catch (error) {
+              log(`could not share provenance: ${(error as Error).message}`);
+            }
+          }
         }
         audit(call, {
           latencyMs: Date.now() - call.started,

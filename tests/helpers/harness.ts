@@ -40,6 +40,7 @@ export function startProxy(opts: {
   policy?: Partial<Policy>;
   store?: Store | null;
   name?: string;
+  group?: string;
 }): Harness {
   const dir = mkdtempSync(join(tmpdir(), "firebreak-proxy-"));
   const fixtureFile = join(dir, "fixture.json");
@@ -74,6 +75,7 @@ export function startProxy(opts: {
     stdout,
     stderr,
     approvalPollMs: 20,
+    group: opts.group ?? `test-${Math.random()}`,
   });
 
   let nextId = 1;
