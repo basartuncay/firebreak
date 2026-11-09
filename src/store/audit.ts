@@ -158,4 +158,31 @@ export class Audit {
     }
     return { ok: true, count };
   }
+
+  /** Counts per decision and per fired rule for events at or after `sinceIso`. */
+  stats(sinceIso: string): {
+    total: number;
+    decisions: Record<string, number>;
+    rules: Record<string, number>;
+  } {
+    const decisions = Object.fromEntries(
+      (
+        this.db
+          .prepare("SELECT decision, COUNT(*) AS n FROM events WHERE ts >= ? GROUP BY decision")
+          .all(sinceIso) as { decision: string; n: number }[]
+      ).map((r) => [r.decision, r.n]),
+    );
+    const rules = Object.fromEntries(
+      (
+        this.db
+          .prepare(
+            `SELECT json_extract(f.value, '$.rule') AS rule, COUNT(DISTINCT events.id) AS n
+             FROM events, json_each(events.findings) AS f WHERE events.ts >= ? GROUP BY rule`,
+          )
+          .all(sinceIso) as { rule: string; n: number }[]
+      ).map((r) => [r.rule, r.n]),
+    );
+    const total = Object.values(decisions).reduce((a, b) => a + b, 0);
+    return { total, decisions, rules };
+  }
 }
