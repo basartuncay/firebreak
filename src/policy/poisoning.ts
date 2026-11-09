@@ -19,8 +19,7 @@ const CREDENTIALS = [
   /\.aws\/credentials|\bmcp\.json\b|claude_desktop_config/i,
 ];
 
-// Zero-width, bidi controls, invisible operators, Unicode tag characters.
-// Written as escapes inside String.raw so no tool can turn them into invisible literals in the source.
+// Zero-width, bidi controls, invisible operators, Unicode tag characters (keep as \u escapes).
 const HIDDEN = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]|[\u{E0000}-\u{E007F}]/u;
 
 export function scanDescription(text: string): string[] {
