@@ -11,9 +11,9 @@
   "files": [
     "dist",
     "scenarios",
-    "examples",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -37,7 +37,8 @@
     "test": "vitest run",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "typecheck": "tsc --noEmit && tsc -p web --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p web --noEmit",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
@@ -61,5 +62,9 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.7",
     "vitest": "^4.1.12"
+  },
+  "homepage": "https://github.com/basartuncay/firebreak#readme",
+  "bugs": {
+    "url": "https://github.com/basartuncay/firebreak/issues"
   }
 }
