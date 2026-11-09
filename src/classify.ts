@@ -21,6 +21,8 @@ const WRITE =
 const READ =
   /^(get|list|read|search|fetch|find|query|describe|show|view|lookup|browse|download|count|check)(_|$)/i;
 
+const OPEN_READ = /^(fetch|browse|download|crawl|scrape|navigate|visit|open_url|get_url|http)(_|$)/i;
+
 /** Last verb-like segment, so "github__create_issue" and "files.write_file" classify by their action. */
 const action = (name: string): string => name.split(/__|\.|\//).pop() ?? name;
 
@@ -46,7 +48,9 @@ export function classifyTool(server: string, def: ToolDef | undefined, policy: P
   if (hints.destructiveHint) kind = stricter(kind ?? "write", "destructive");
   if (kind === undefined) kind = hints.readOnlyHint ? "read" : "write";
 
-  let openWorld = kind === "read" ? hints.openWorldHint === true : hints.openWorldHint !== false;
+  // Reading the web sends the URL (and anything in it) to a server the attacker may run.
+  let openWorld =
+    kind === "read" ? hints.openWorldHint === true || OPEN_READ.test(verb) : hints.openWorldHint !== false;
   // A tool we would treat as writing to the outside world stays open-world whatever the server says.
   if (kind !== "read" && WRITE.test(verb)) openWorld = true;
 

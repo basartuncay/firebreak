@@ -36,6 +36,13 @@ export const DEFAULT_SINKS = [
   "channel",
   "attendee",
   "attendees",
+  "address",
+  "chat",
+  "room",
+  "conversation",
+  "phone",
+  "host",
+  "destination",
 ];
 
 export const DEFAULT_POLICY: Policy = {

