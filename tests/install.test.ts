@@ -19,13 +19,15 @@ const config = {
 
 describe("planInstall", () => {
   it("wraps stdio entries", () => {
-    const { config: out, wrapped } = planInstall(structuredClone(config));
+    const { config: out, wrapped } = planInstall(structuredClone(config), {
+      command: "/usr/local/bin/node",
+      args: ["/opt/firebreak/dist/cli.js"],
+    });
     expect(wrapped).toEqual(["github", "files"]);
     expect(out.mcpServers?.github).toEqual({
-      command: "npx",
+      command: "/usr/local/bin/node",
       args: [
-        "-y",
-        "mcp-firebreak",
+        "/opt/firebreak/dist/cli.js",
         "wrap",
         "--name",
         "github",
@@ -52,6 +54,13 @@ describe("planInstall", () => {
     const { config: restored, restored: names } = planUninstall(wrapped);
     expect(restored).toEqual(config);
     expect(names).toEqual(["github", "files"]);
+  });
+
+  it("round-trips with an absolute launcher", () => {
+    const launcher = { command: "/usr/local/bin/node", args: ["/opt/firebreak/dist/cli.js"] };
+    const wrapped = planInstall(structuredClone(config), launcher).config;
+    expect(planInstall(structuredClone(wrapped), launcher).wrapped).toEqual([]);
+    expect(planUninstall(wrapped).config).toEqual(config);
   });
 
   it("handles a config without servers", () => {

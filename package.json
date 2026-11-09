@@ -11,6 +11,7 @@
   "files": [
     "dist",
     "scenarios",
+    "examples",
     "README.md",
     "LICENSE"
   ],

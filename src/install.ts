@@ -15,15 +15,29 @@ interface ServerEntry {
 
 type Config = { mcpServers?: Record<string, ServerEntry>; [key: string]: unknown };
 
-const wrapPrefix = (name: string) => ["-y", PACKAGE, "wrap", "--name", name, "--"];
+/** How client configs start Firebreak. Absolute paths by default: GUI clients often lack the shell PATH. */
+export interface Launcher {
+  command: string;
+  args: string[];
+}
+
+export const NPX_LAUNCHER: Launcher = { command: "npx", args: ["-y", PACKAGE] };
 
 function isWrapped(entry: ServerEntry): boolean {
   const args = entry.args ?? [];
-  return entry.command === "firebreak" || (args.includes(PACKAGE) && args.includes("wrap"));
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  return (
+    entry.command === "firebreak" ||
+    (head.includes("wrap") && head.some((a) => a === PACKAGE || /cli\.js$/.test(a)))
+  );
 }
 
 /** Rewrites every stdio server entry to run behind `firebreak wrap`; keeps env and other fields. */
-export function planInstall(config: Config): { config: Config; wrapped: string[]; skipped: string[] } {
+export function planInstall(
+  config: Config,
+  launcher: Launcher = NPX_LAUNCHER,
+): { config: Config; wrapped: string[]; skipped: string[] } {
   const wrapped: string[] = [];
   const skipped: string[] = [];
   const servers = config.mcpServers ?? {};
@@ -34,8 +48,8 @@ export function planInstall(config: Config): { config: Config; wrapped: string[]
     }
     servers[name] = {
       ...entry,
-      command: "npx",
-      args: [...wrapPrefix(name), entry.command, ...(entry.args ?? [])],
+      command: launcher.command,
+      args: [...launcher.args, "wrap", "--name", name, "--", entry.command, ...(entry.args ?? [])],
     };
     wrapped.push(name);
   }
@@ -61,7 +75,7 @@ export function planUninstall(config: Config): { config: Config; restored: strin
 export function applyToFile(
   file: string,
   mode: "install" | "uninstall",
-  opts: { dryRun: boolean },
+  opts: { dryRun: boolean; launcher?: Launcher },
 ): { changed: string[]; backup?: string } {
   const text = readFileSync(file, "utf8");
   let config: Config;
@@ -72,7 +86,8 @@ export function applyToFile(
       `${file} is not valid JSON (${(error as Error).message}); fix it first, nothing was changed`,
     );
   }
-  const changed = mode === "install" ? planInstall(config).wrapped : planUninstall(config).restored;
+  const changed =
+    mode === "install" ? planInstall(config, opts.launcher).wrapped : planUninstall(config).restored;
   if (opts.dryRun || changed.length === 0) return { changed };
   const backup = `${file}.firebreak-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   copyFileSync(file, backup);

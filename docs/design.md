@@ -210,7 +210,7 @@ claude_desktop_config.json` (macOS) / `%APPDATA%\Claude\claude_desktop_config.js
   to an SDK v2 server through `firebreak wrap`.
 - Biome lint/format, `tsc --noEmit`, CI on Node 20 and 22, the attack suite as a CI gate.
 - README with a 60-second quick start, threat model and honest limits, architecture diagram, results.
-- Docker image for the UI.
+- No Docker image in v0.1: the dashboard reads the local state file the proxies write, so a container adds setup without benefit (decided during implementation).
 
 ## Left to the builder
 
