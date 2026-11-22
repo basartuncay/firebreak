@@ -208,6 +208,12 @@ h1 {
   letter-spacing: -0.01em;
   margin: 48px 0 28px;
 }
+h1:focus {
+  outline: none;
+}
+h1:focus-visible {
+  outline: 2px solid var(--ink);
+}
 h2.sub {
   font: 400 30px / 1.1 var(--serif);
   margin: 64px 0 12px;
@@ -273,6 +279,7 @@ h2.sub {
   font-weight: 600;
 }
 .lead .hl {
+  white-space: pre-wrap;
   background: var(--mark);
   border-bottom: 2px solid var(--ember);
   padding: 0 2px;
@@ -475,6 +482,21 @@ button.approve:hover:not(:disabled) {
   margin: 0;
   font-size: 14px;
   color: var(--muted);
+}
+/* Just opened: the buttons ignore clicks for a moment. Dashed and unfilled, so it does not rely on colour. */
+.actions button.waiting,
+.actions button.waiting:disabled {
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--muted);
+  border: 2px dashed var(--muted);
+  opacity: 1;
+}
+.replaced {
+  margin: 0 0 20px;
+  padding: 10px 0 10px 12px;
+  border-left: 3px solid var(--ember);
+  font-size: 16px;
 }
 .error {
   color: var(--deny);

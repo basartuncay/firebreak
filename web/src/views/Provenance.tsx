@@ -97,6 +97,11 @@ function SourceExcerpt({ snippet, value }: { snippet: string; value: string }) {
           Partial match: the excerpt holds only part of the value, and only that part is marked.
         </p>
       )}
+      {!range && value.trim() && (
+        <p className="note">
+          This excerpt does not hold the traced value as one piece, so nothing is marked.
+        </p>
+      )}
     </>
   );
 }

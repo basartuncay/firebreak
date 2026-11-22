@@ -42,16 +42,24 @@ function summary(a: Approval): ReactNode {
   );
 }
 
+/** After a card opens, Approve and Deny ignore activation this long, so a click meant for the card that was
+ * just in this place (decided, timed out or decided elsewhere) cannot land on the next one. */
+const ARM_MS = 600;
+
 function ApprovalCard({
   approval,
   onDone,
   focus,
+  reason,
+  onReason,
 }: {
   approval: Approval;
   onDone: () => void;
   focus: boolean;
+  reason: string;
+  onReason: (reason: string) => void;
 }) {
-  const [reason, setReason] = useState("");
+  const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sent = useRef(false);
@@ -63,8 +71,13 @@ function ApprovalCard({
     if (focus) heading.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => setArmed(true), ARM_MS);
+    return () => clearTimeout(t);
+  }, []);
+
   const decide = async (decision: "approved" | "denied") => {
-    if (sent.current) return; // one decision per call, even on a fast double click
+    if (!armed || sent.current) return; // one decision per call, even on a fast double click
     sent.current = true;
     setBusy(true);
     setError(null);
@@ -99,16 +112,26 @@ function ApprovalCard({
           <span>Note for the agent (optional)</span>
           <input
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => onReason(e.target.value)}
             placeholder="e.g. never send invoices outside the company"
             maxLength={500}
           />
         </label>
         <div className="actions">
-          <button type="button" className="deny" disabled={busy} onClick={() => decide("denied")}>
+          <button
+            type="button"
+            className={`deny ${armed ? "" : "waiting"}`}
+            disabled={busy || !armed}
+            onClick={() => decide("denied")}
+          >
             Deny
           </button>
-          <button type="button" className="approve" disabled={busy} onClick={() => decide("approved")}>
+          <button
+            type="button"
+            className={`approve ${armed ? "" : "waiting"}`}
+            disabled={busy || !armed}
+            onClick={() => decide("approved")}
+          >
             Approve once
           </button>
         </div>
@@ -129,20 +152,65 @@ export function Approvals({ tick, onChange }: { tick: number; onChange: () => vo
   const [data, setData] = useState<{ pending: Approval[]; recent: Approval[] } | null>(null);
   const [chosen, setChosen] = useState<number | null>(null);
   const [moveFocus, setMoveFocus] = useState(false);
+  // Typed notes per call, in memory only: kept while the user switches calls, dropped once it is decided.
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [replaced, setReplaced] = useState<{ gone: number; now: number | undefined } | null>(null);
+  const viewing = useRef<number | undefined>(undefined);
+  const decidedHere = useRef(new Set<number>());
+  const title = useRef<HTMLHeadingElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
     api.approvals().then(setData, () => {});
   }, [tick]);
 
+  // The first call in the server's order is open; the others wait in the index until chosen.
+  const openId = data?.pending.some((a) => a.id === chosen) ? chosen : data?.pending[0]?.id;
+
+  // When the open call goes away without the user deciding it here, say which call took its place.
+  useEffect(() => {
+    if (!data) return;
+    const ids = new Set(data.pending.map((a) => a.id));
+    setNotes((n) => {
+      const kept = Object.entries(n).filter(([id]) => ids.has(Number(id)));
+      return kept.length === Object.keys(n).length ? n : Object.fromEntries(kept);
+    });
+    const before = viewing.current;
+    viewing.current = openId ?? undefined;
+    if (before === undefined || before === openId) return;
+    setReplaced(
+      ids.has(before) || decidedHere.current.has(before) ? null : { gone: before, now: openId ?? undefined },
+    );
+  }, [data, openId]);
+
+  // After the last waiting call is decided, focus goes to the page heading instead of being lost.
+  useEffect(() => {
+    if (data && data.pending.length === 0 && moveFocus) {
+      title.current?.focus();
+      setMoveFocus(false);
+    }
+  }, [data, moveFocus]);
+
   if (!data) return <p className="muted">Loading…</p>;
   const decided = data.recent.filter((a) => a.status !== "pending").slice(0, 8);
-  // The first call in the server's order is open; the others wait in the index until chosen.
-  const openId = data.pending.some((a) => a.id === chosen) ? chosen : data.pending[0]?.id;
 
   return (
     <section>
-      <h1>Waiting for you</h1>
+      <h1 ref={title} tabIndex={-1}>
+        Waiting for you
+      </h1>
+      {replaced && (
+        <p className="replaced" role="status">
+          Call <span className="mono">#{replaced.gone}</span> is no longer waiting: it timed out or was
+          decided elsewhere.
+          {replaced.now !== undefined && (
+            <>
+              {" "}
+              You are now looking at call <span className="mono">#{replaced.now}</span>.
+            </>
+          )}
+        </p>
+      )}
       {data.pending.length === 0 ? (
         <div className="empty">
           <p className="say">Nothing is waiting.</p>
@@ -159,7 +227,12 @@ export function Approvals({ tick, onChange }: { tick: number; onChange: () => vo
                 <ApprovalCard
                   approval={a}
                   focus={moveFocus}
+                  reason={notes[a.id] ?? ""}
+                  onReason={(r) => setNotes((n) => ({ ...n, [a.id]: r }))}
                   onDone={() => {
+                    decidedHere.current.add(a.id);
+                    setNotes(({ [a.id]: _, ...rest }) => rest);
+                    setReplaced(null);
                     setMoveFocus(true);
                     onChange();
                   }}
