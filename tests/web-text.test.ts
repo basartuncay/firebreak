@@ -117,7 +117,8 @@ describe("markInExcerpt (evidence mark in a stored source excerpt)", () => {
     expect(markInExcerpt("a\u{1F468}\u200D\u{1F469} b", "\u{1F468}")).toBeNull(); // inside a ZWJ sequence
   });
 
-  it("finishes a 100 kB adversarial excerpt and value in under 50 ms", () => {
+  // Wall-clock bound kept loose on purpose: the old loop took seconds on 10 kB, a busy CI runner takes ~100 ms here.
+  it("finishes a 100 kB adversarial excerpt and value well under a second", () => {
     const body = "ab".repeat(50_000);
     const value = `${"ab".repeat(25_000)}c${"ab".repeat(25_000)}`;
     const t = performance.now();
@@ -125,7 +126,7 @@ describe("markInExcerpt (evidence mark in a stored source excerpt)", () => {
     // A partial match is only looked for in excerpts of gateway size (a few hundred characters).
     expect(markInExcerpt(body, value, { before: true, after: true })).toBeNull();
     expect(markInValue(body, value)).toEqual([]);
-    expect(performance.now() - t).toBeLessThan(50);
+    expect(performance.now() - t).toBeLessThan(1000);
   });
 });
 
@@ -240,11 +241,11 @@ describe("visibleParts (invisible and reordering characters made visible)", () =
     expect(hiddenCount("ops\u200B@evil.example\u202E")).toBe(2);
   });
 
-  it("handles 100 kB of hostile text in under 50 ms", () => {
+  it("handles 100 kB of hostile text well under a second", () => {
     const s = "a\u200B\u202E".repeat(34_000);
     const t = performance.now();
     expect(hiddenCount(s)).toBe(68_000);
-    expect(performance.now() - t).toBeLessThan(50);
+    expect(performance.now() - t).toBeLessThan(1000);
   });
 });
 
