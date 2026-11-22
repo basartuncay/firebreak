@@ -13,6 +13,16 @@ const TOKEN_HEADER = "x-firebreak-token";
 /** DNS rebinding: a page on evil.example resolving to 127.0.0.1 still sends Host: evil.example. */
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
+const SECURITY_HEADERS: [string, string][] = [
+  [
+    "Content-Security-Policy",
+    "default-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  ],
+  ["X-Content-Type-Options", "nosniff"],
+  ["Referrer-Policy", "no-referrer"],
+  ["X-Frame-Options", "DENY"],
+];
+
 const sameToken = (a: string, b: string): boolean => {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -21,6 +31,13 @@ const sameToken = (a: string, b: string): boolean => {
 
 export function createUiApp(store: Store, opts: { token: string; staticDir?: string }) {
   const app = new Hono();
+
+  // On every response, refusals and the event stream included: the page loads only its own files, cannot
+  // be framed, and leaks no URL (the access token is in it) through the Referer header.
+  app.use("*", async (c, next) => {
+    await next();
+    for (const [name, value] of SECURITY_HEADERS) c.res.headers.set(name, value);
+  });
 
   // The page and its assets are public; every /api route needs the token. The token travels in a header
   // (never a cookie: browsers send cookies to every port on 127.0.0.1, so any local dev server would get it).
