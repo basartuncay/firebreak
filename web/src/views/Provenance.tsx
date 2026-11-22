@@ -1,18 +1,17 @@
+import { type ReactNode, useMemo } from "react";
 import type { ArgProvenance, Finding } from "../api";
-import { markRange } from "../text";
+import { markInExcerpt, markInValue, type Range } from "../text";
 
-/** Renders the text with the matched value highlighted, so the user sees the exact origin. */
-export function Highlighted({ snippet, value }: { snippet: string; value: string }) {
-  const range = markRange(snippet, value);
-  if (!range) return <>{snippet}</>;
-  const { at, len } = range;
-  return (
-    <>
-      {snippet.slice(0, at)}
-      <mark>{snippet.slice(at, at + len)}</mark>
-      {snippet.slice(at + len)}
-    </>
-  );
+/** Renders the text with the given ranges marked. Ranges come from the original string. */
+function Marked({ text, ranges }: { text: string; ranges: Range[] }) {
+  const parts: ReactNode[] = [];
+  let pos = 0;
+  for (const r of ranges) {
+    parts.push(text.slice(pos, r.at), <mark key={r.at}>{text.slice(r.at, r.at + r.len)}</mark>);
+    pos = r.at + r.len;
+  }
+  parts.push(text.slice(pos));
+  return <>{parts}</>;
 }
 
 /**
@@ -23,21 +22,29 @@ function SourceExcerpt({ snippet, value }: { snippet: string; value: string }) {
   const before = snippet.startsWith("…");
   const after = snippet.endsWith("…") && snippet.length > 1;
   const body = snippet.slice(before ? 1 : 0, after ? -1 : undefined);
+  const range = useMemo(() => markInExcerpt(body, value, { before, after }), [body, value, before, after]);
   return (
-    <blockquote>
-      {before && (
-        <span className="cut" title="The source continues before this excerpt">
-          […]{" "}
-        </span>
+    <>
+      <blockquote>
+        {before && (
+          <span className="cut" title="The source continues before this excerpt">
+            […]{" "}
+          </span>
+        )}
+        <Marked text={body} ranges={range ? [range] : []} />
+        {after && (
+          <span className="cut" title="The source continues after this excerpt">
+            {" "}
+            […]
+          </span>
+        )}
+      </blockquote>
+      {range?.partial && (
+        <p className="note">
+          Partial match: the excerpt holds only part of the value, and only that part is marked.
+        </p>
       )}
-      <Highlighted snippet={body} value={value} />
-      {after && (
-        <span className="cut" title="The source continues after this excerpt">
-          {" "}
-          […]
-        </span>
-      )}
-    </blockquote>
+    </>
   );
 }
 
@@ -45,6 +52,23 @@ const pretty = (value: unknown): string => {
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
 };
+
+/** The argument as sent. Only an exact occurrence of the traced value is marked; otherwise it is said in words. */
+function ArgValue({ text, traced }: { text: string; traced: string | undefined }) {
+  const ranges = useMemo(() => (traced ? markInValue(text, traced) : []), [text, traced]);
+  return (
+    <>
+      <pre className="value">
+        <Marked text={text} ranges={ranges} />
+      </pre>
+      {traced && ranges.length === 0 && (
+        <p className="note">
+          This argument carries the traced value, but not as one exact piece of text, so nothing is marked.
+        </p>
+      )}
+    </>
+  );
+}
 
 /** One row per argument: value, and for tainted values the tool output they came from. */
 export function ArgumentTable({
@@ -74,14 +98,13 @@ export function ArgumentTable({
         const isFlagged = [...flagged].some(
           (p) => p === key || p?.startsWith(`${key}[`) || p?.startsWith(`${key}.`),
         );
-        const text = pretty(value);
         // shortcut: marks the first traced value only; several traced paths inside one argument show one mark.
         const traced = isFlagged ? sources[0]?.value : undefined;
         return (
           <div key={key} className={`arg ${isFlagged ? "flagged" : ""}`}>
             <dt>{key}</dt>
             <dd>
-              <pre className="value">{traced ? <Highlighted snippet={text} value={traced} /> : text}</pre>
+              <ArgValue text={pretty(value)} traced={traced} />
               {sources.map((p) =>
                 p.sources.slice(0, 2).map((s) => (
                   <div className={`origin ${s.label}`} key={`${p.path}-${s.callId}`}>

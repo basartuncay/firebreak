@@ -831,3 +831,10 @@ del {
     gap: 12px;
   }
 }
+
+/* Plain lines that qualify the evidence: a partial or missing mark */
+.note {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink);
+}
