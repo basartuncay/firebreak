@@ -126,6 +126,8 @@ a {
   align-items: center;
   gap: 8px;
   min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
   padding: 10px 0 8px;
   color: var(--muted);
   text-decoration: none;
@@ -191,9 +193,6 @@ h2.sub {
   margin: 64px 0 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--rule-strong);
-}
-.sub + .index {
-  border-top: 0;
 }
 .intro {
   max-width: 66ch;
@@ -527,6 +526,9 @@ button.approve:hover:not(:disabled) {
 }
 .index > li {
   border-bottom: 1px solid var(--rule);
+}
+.sub + .index {
+  border-top: 0;
 }
 .recent > li {
   display: grid;

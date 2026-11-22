@@ -16,7 +16,8 @@ function summary(a: Approval): ReactNode {
   if (s.label === "private") {
     return (
       <>
-        It would send private data read from {from} out of your machine, in <code>{p.path}</code>.
+        It would pass private data read from {from}, in <code>{p.path}</code>, to a tool that sends data
+        outside.
       </>
     );
   }

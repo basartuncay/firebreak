@@ -7,6 +7,17 @@ export function Highlighted({ snippet, value }: { snippet: string; value: string
   let at = lower.indexOf(needle);
   let len = needle.length;
   if (at < 0) {
+    // The stored excerpt can end inside the value: highlight the longest start or end of the value it holds.
+    for (let n = needle.length - 1; n >= 12 && at < 0; n--) {
+      const head = lower.indexOf(needle.slice(0, n));
+      const tail = lower.indexOf(needle.slice(-n));
+      if (head >= 0 || tail >= 0) {
+        at = head >= 0 ? head : tail;
+        len = n;
+      }
+    }
+  }
+  if (at < 0) {
     // The value contained an atom (an address, a URL): highlight the longest token of the value found.
     const token = needle
       .split(/[\s,;]+/)
