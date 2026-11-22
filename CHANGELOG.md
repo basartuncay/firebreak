@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- The dashboard is redesigned. The first waiting call opens with one question ("Approve `server/tool`?"),
+  the finding in a sentence, every argument in full with the traced value marked, and the source excerpt
+  with the same mark; the cut ends of an excerpt show as `[…]`, apart from the quoted text. Deny and
+  Approve once are told apart by fill, label and position, not by colour alone. Activity shows
+  wall-clock times and the full event hash; Tools marks what changed in a quarantined definition. Light
+  and dark follow the system setting, the layout works at 375 px, and nothing animates. No API, request
+  or decision changed.
+- The dashboard's fonts (DM Sans, Instrument Serif, JetBrains Mono) are bundled with their OFL licence
+  texts, so it makes no requests outside `127.0.0.1`.
+- Tests build `dist` once per run instead of once per test file, which removes a race between test files.
+- README: real captures of the new dashboard in light and dark, a short recording of a denied call, and a
+  diagram of how a call is decided.
+
 ## 0.1.1
 
 First version on npm.
