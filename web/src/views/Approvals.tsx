@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Approval, api, timeAgo } from "../api";
-import { ArgumentTable, DecisionChip, Findings } from "./Provenance";
+import { ArgumentTable, DecisionChip, Findings, Shown } from "./Provenance";
 
 /** The one sentence a tired person reads first: what the call wants and where the value came from. */
 function summary(a: Approval): ReactNode {
@@ -10,23 +10,34 @@ function summary(a: Approval): ReactNode {
   if (!p || !s) return a.findings[0]?.message ?? null;
   const from = (
     <code>
-      {s.server}/{s.tool}
+      <Shown text={`${s.server}/${s.tool}`} />
+    </code>
+  );
+  const path = (
+    <code>
+      <Shown text={p.path} />
     </code>
   );
   if (s.label === "private") {
     return (
       <>
-        It would pass private data read from {from}, in <code>{p.path}</code>, to a tool that sends data
-        outside.
+        It would pass private data read from {from}, in {path}, to a tool that sends data outside.
       </>
     );
   }
-  // Long values are shown in full in the evidence below; the sentence never cuts them.
-  const value = p.value.length <= 120 ? <code className="hl">{p.value}</code> : "the value below";
+  // Long values are shown in full in the evidence below; the sentence never cuts them. Its whitespace is
+  // kept (pre-wrap) and hidden characters are drawn, so nothing in the value vanishes from the sentence.
+  const value =
+    p.value.length <= 120 ? (
+      <code className="hl">
+        <Shown text={p.value} pre />
+      </code>
+    ) : (
+      "the value below"
+    );
   return (
     <>
-      It wants to use {value} as <code>{p.path}</code>. That value came from untrusted output of {from}, not
-      from you.
+      It wants to use {value} as {path}. That value came from untrusted output of {from}, not from you.
     </>
   );
 }
@@ -76,7 +87,7 @@ function ApprovalCard({
       <h2 className="question" id={`a-${approval.id}`} ref={heading} tabIndex={-1}>
         Approve{" "}
         <code>
-          {approval.server}/{approval.tool}
+          <Shown text={`${approval.server}/${approval.tool}`} />
         </code>
         ?
       </h2>
@@ -165,10 +176,14 @@ export function Approvals({ tick, onChange }: { tick: number; onChange: () => vo
                   <span className="when">{timeAgo(a.createdAt)}</span>
                   <span className="what">
                     <code>
-                      <span className="server">{a.server}/</span>
-                      {a.tool}
+                      <span className="server">
+                        <Shown text={`${a.server}/`} />
+                      </span>
+                      <Shown text={a.tool} />
                     </code>{" "}
-                    <span className="muted">{a.findings[0]?.message}</span>
+                    <span className="muted">
+                      <Shown text={a.findings[0]?.message ?? ""} />
+                    </span>
                   </span>
                   <span className="open-label">Review</span>
                 </button>
@@ -186,11 +201,16 @@ export function Approvals({ tick, onChange }: { tick: number; onChange: () => vo
                 <span className="when">{timeAgo(a.decidedAt ?? a.createdAt)}</span>
                 <DecisionChip decision="confirm" approval={a.status} />
                 <code>
-                  {a.server}/{a.tool}
+                  <Shown text={`${a.server}/${a.tool}`} />
                 </code>
                 <span className="who">
                   {a.decidedBy === "timeout" ? "no answer" : `by ${a.decidedBy}`}
-                  {a.reason ? ` — “${a.reason}”` : ""}
+                  {a.reason && (
+                    <>
+                      {" — “"}
+                      <Shown text={a.reason} />”
+                    </>
+                  )}
                 </span>
               </li>
             ))}

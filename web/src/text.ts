@@ -170,3 +170,98 @@ export function splitChange(before: string, after: string): { before: string[]; 
   ];
   return { before: part(a), after: part(b) };
 }
+
+/** A character that would be invisible or reorder text, shown as its code point instead. */
+export type Hidden = { code: string; name: string };
+export type Part = string | Hidden;
+
+const NAMES: Record<number, string> = {
+  173: "soft hyphen",
+  1564: "Arabic letter mark",
+  6158: "Mongolian vowel separator",
+  8203: "zero-width space",
+  8204: "zero-width non-joiner",
+  8205: "zero-width joiner",
+  8206: "left-to-right mark",
+  8207: "right-to-left mark",
+  8232: "line separator",
+  8233: "paragraph separator",
+  8234: "left-to-right embedding",
+  8235: "right-to-left embedding",
+  8236: "pop directional formatting",
+  8237: "left-to-right override",
+  8238: "right-to-left override",
+  8288: "word joiner",
+  8294: "left-to-right isolate",
+  8295: "right-to-left isolate",
+  8296: "first strong isolate",
+  8297: "pop directional isolate",
+  65279: "zero-width no-break space",
+};
+
+// Control characters, zero-width and bidirectional formatting characters, tag characters (U+E0000-E007F,
+// used to smuggle invisible ASCII) and unpaired surrogates. Newline, tab and CR are decided in the callback.
+const HIDDEN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+/**
+ * Splits text into plain runs and hidden characters. With `pre` (text shown in a pre-wrap block), newline,
+ * tab and CR before a newline stay as they are; elsewhere they are shown too, so nothing vanishes silently.
+ */
+export function visibleParts(s: string, pre = false): Part[] {
+  const out: Part[] = [];
+  let pos = 0;
+  for (const m of s.matchAll(HIDDEN)) {
+    const c = m[0];
+    const at = m.index;
+    if (pre && (c === "\n" || c === "\t" || (c === "\r" && s[at + 1] === "\n"))) continue;
+    if (at > pos) out.push(s.slice(pos, at));
+    const cp = c.length === 2 ? c.codePointAt(0)! : c.charCodeAt(0);
+    const name =
+      NAMES[cp] ??
+      (cp >= 0xe0000
+        ? "tag character"
+        : cp >= 0xd800 && cp <= 0xdfff
+          ? "unpaired surrogate"
+          : "control character");
+    out.push({ code: `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`, name });
+    pos = at + c.length;
+  }
+  if (pos < s.length) out.push(s.slice(pos));
+  return out;
+}
+
+/** The text as the page shows it, hidden characters written as ⟨U+XXXX⟩. */
+export const visibleText = (s: string, pre = false): string =>
+  visibleParts(s, pre)
+    .map((p) => (typeof p === "string" ? p : `⟨${p.code}⟩`))
+    .join("");
+
+/** How many hidden characters a value shown in a pre-wrap block holds. */
+export const hiddenCount = (s: string): number =>
+  visibleParts(s, true).filter((p) => typeof p !== "string").length;
+
+const SCRIPTS = ["Latin", "Cyrillic", "Greek", "Armenian", "Georgian", "Cherokee", "Hebrew", "Arabic"].map(
+  (name) => [name, new RegExp(`\\p{Script=${name}}`, "u")] as const,
+);
+const ADDRESS = /@|:\/\/|^[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+\.?$/u;
+
+/**
+ * Words that look like an email address, a URL or a host name and mix letters of several scripts
+ * (Latin "a" next to Cyrillic "а"), with the scripts in order of first use.
+ */
+export function lookalikes(s: string): { token: string; scripts: string[] }[] {
+  const out: { token: string; scripts: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const token of s.split(/[\s"'<>()[\]{},;]+/u)) {
+    if (!token || seen.has(token) || !ADDRESS.test(token)) continue;
+    seen.add(token);
+    const scripts: string[] = [];
+    for (const letter of token.match(/\p{L}/gu) ?? []) {
+      const script = SCRIPTS.find(([, re]) => re.test(letter))?.[0];
+      if (script && !scripts.includes(script)) scripts.push(script);
+    }
+    if (scripts.length > 1) out.push({ token, scripts });
+  }
+  return out;
+}

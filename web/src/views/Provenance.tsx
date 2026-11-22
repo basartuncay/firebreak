@@ -1,17 +1,70 @@
 import { type ReactNode, useMemo } from "react";
 import type { ArgProvenance, Finding } from "../api";
-import { markInExcerpt, markInValue, type Range } from "../text";
+import { hiddenCount, lookalikes, markInExcerpt, markInValue, type Range, visibleParts } from "../text";
 
-/** Renders the text with the given ranges marked. Ranges come from the original string. */
+/**
+ * Untrusted text as it really is: invisible and reordering characters are drawn as ⟨U+XXXX⟩ chips.
+ * `pre` keeps newline and tab (for pre-wrap blocks); without it they are drawn as chips too.
+ */
+export function Shown({ text, pre = false }: { text: string; pre?: boolean }) {
+  const parts = useMemo(() => visibleParts(text, pre), [text, pre]);
+  return (
+    <>
+      {parts.map((p, i) =>
+        typeof p === "string" ? (
+          p
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: parts never reorder
+          <span key={i} className="cp" title={`Invisible character: ${p.name}`}>
+            ⟨{p.code}⟩
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** Renders pre-wrap text with the given ranges marked. Ranges come from the original string. */
 function Marked({ text, ranges }: { text: string; ranges: Range[] }) {
   const parts: ReactNode[] = [];
   let pos = 0;
   for (const r of ranges) {
-    parts.push(text.slice(pos, r.at), <mark key={r.at}>{text.slice(r.at, r.at + r.len)}</mark>);
+    parts.push(
+      <Shown key={`t${pos}`} text={text.slice(pos, r.at)} pre />,
+      <mark key={r.at}>
+        <Shown text={text.slice(r.at, r.at + r.len)} pre />
+      </mark>,
+    );
     pos = r.at + r.len;
   }
-  parts.push(text.slice(pos));
+  parts.push(<Shown key={`t${pos}`} text={text.slice(pos)} pre />);
   return <>{parts}</>;
+}
+
+/** Plain warnings for a value the user may approve: hidden characters, letters from mixed scripts. */
+function ValueWarnings({ text }: { text: string }) {
+  const hidden = useMemo(() => hiddenCount(text), [text]);
+  const mixed = useMemo(() => lookalikes(text), [text]);
+  return (
+    <>
+      {hidden > 0 && (
+        <p className="warn-line">
+          <strong>Hidden characters.</strong> This value holds {hidden} invisible or direction-changing{" "}
+          {hidden === 1 ? "character" : "characters"}, shown above as ⟨U+…⟩. The tool receives the real
+          characters, so it may not read the way it looks.
+        </p>
+      )}
+      {mixed.map((m) => (
+        <p className="warn-line" key={m.token}>
+          <strong>Lookalike letters.</strong>{" "}
+          <code>
+            <Shown text={m.token} />
+          </code>{" "}
+          mixes {m.scripts.join(" and ")} letters, so it may imitate a different address.
+        </p>
+      ))}
+    </>
+  );
 }
 
 /**
@@ -66,6 +119,7 @@ function ArgValue({ text, traced }: { text: string; traced: string | undefined }
           This argument carries the traced value, but not as one exact piece of text, so nothing is marked.
         </p>
       )}
+      <ValueWarnings text={text} />
     </>
   );
 }
@@ -102,16 +156,25 @@ export function ArgumentTable({
         const traced = isFlagged ? sources[0]?.value : undefined;
         return (
           <div key={key} className={`arg ${isFlagged ? "flagged" : ""}`}>
-            <dt>{key}</dt>
+            <dt>
+              <Shown text={key} />
+            </dt>
             <dd>
               <ArgValue text={pretty(value)} traced={traced} />
               {sources.map((p) =>
                 p.sources.slice(0, 2).map((s) => (
                   <div className={`origin ${s.label}`} key={`${p.path}-${s.callId}`}>
                     <span className="origin-label">
-                      {p.path !== key ? `${p.path} ` : ""}came from{" "}
+                      {p.path !== key && (
+                        <>
+                          <code>
+                            <Shown text={p.path} />
+                          </code>{" "}
+                        </>
+                      )}
+                      came from{" "}
                       <strong>
-                        {s.server}/{s.tool}
+                        <Shown text={`${s.server}/${s.tool}`} />
                       </strong>{" "}
                       ({s.label === "private" ? "your private data" : "untrusted output"})
                     </span>
@@ -144,7 +207,9 @@ export function Findings({ findings }: { findings: Finding[] }) {
           <span className="rule">
             {f.rule} <span className="rule-name">{RULE_NAMES[f.rule] ?? ""}</span>
           </span>
-          <span className="msg">{f.message}</span>
+          <span className="msg">
+            <Shown text={f.message} />
+          </span>
         </li>
       ))}
     </ul>

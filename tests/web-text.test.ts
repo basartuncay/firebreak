@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { markInExcerpt, markInValue, splitChange } from "../web/src/text.js";
+import {
+  hiddenCount,
+  lookalikes,
+  markInExcerpt,
+  markInValue,
+  splitChange,
+  visibleParts,
+  visibleText,
+} from "../web/src/text.js";
 
 const inExcerpt = (body: string, value: string, cut = { before: false, after: false }) => {
   const r = markInExcerpt(body, value, cut);
@@ -193,5 +201,70 @@ describe("splitChange (before/after of a changed tool definition)", () => {
       before: ["Same text.", "", ""],
       after: ["Same text.", "", ""],
     });
+  });
+});
+
+const shown = (s: string, pre = false) => visibleText(s, pre);
+
+describe("visibleParts (invisible and reordering characters made visible)", () => {
+  it("turns zero-width characters into U+ tokens", () => {
+    for (const c of ["\u200B", "\u200C", "\u200D", "\u200E", "\u200F", "\u2060", "\uFEFF"]) {
+      const code = c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+      expect(shown(`a${c}b`)).toBe(`a⟨U+${code}⟩b`);
+    }
+  });
+
+  it("turns bidirectional controls into U+ tokens", () => {
+    expect(shown("to \u202Eelpmaxe.live@spo\u202C ok")).toBe("to ⟨U+202E⟩elpmaxe.live@spo⟨U+202C⟩ ok");
+    for (const c of ["\u202A", "\u202B", "\u202D", "\u2066", "\u2067", "\u2068", "\u2069"])
+      expect(visibleParts(`x${c}`)).toEqual([
+        "x",
+        expect.objectContaining({ code: expect.stringMatching(/^U\+20/) }),
+      ]);
+  });
+
+  it("turns C0 and C1 control characters into tokens, keeping newline and tab in pre-wrap text", () => {
+    expect(shown("a\u0000b\u001Bc\u007Fd\u0085e\u009F")).toBe(
+      "a⟨U+0000⟩b⟨U+001B⟩c⟨U+007F⟩d⟨U+0085⟩e⟨U+009F⟩",
+    );
+    expect(shown("line 1\nline\t2\r\nend", true)).toBe("line 1\nline\t2\r\nend");
+    expect(shown("line 1\nline\t2", false)).toBe("line 1⟨U+000A⟩line⟨U+0009⟩2");
+    expect(shown("a\rb", true)).toBe("a⟨U+000D⟩b");
+  });
+
+  it("turns unpaired surrogates and tag characters into tokens, and keeps real pairs", () => {
+    expect(shown("a\uD800b\uDC00c")).toBe("a⟨U+D800⟩b⟨U+DC00⟩c");
+    expect(shown("\u{E0041}\u{E0042}")).toBe("⟨U+E0041⟩⟨U+E0042⟩");
+    expect(shown("ok 😀 e\u0301")).toBe("ok 😀 e\u0301");
+    expect(hiddenCount("ok 😀\nfine")).toBe(0);
+    expect(hiddenCount("ops\u200B@evil.example\u202E")).toBe(2);
+  });
+
+  it("handles 100 kB of hostile text in under 50 ms", () => {
+    const s = "a\u200B\u202E".repeat(34_000);
+    const t = performance.now();
+    expect(hiddenCount(s)).toBe(68_000);
+    expect(performance.now() - t).toBeLessThan(50);
+  });
+});
+
+describe("lookalikes (addresses that mix scripts)", () => {
+  it("names the scripts of an address, URL or host name that mixes them", () => {
+    expect(lookalikes("send to ops@p\u0430ypal.example now")).toEqual([
+      { token: "ops@p\u0430ypal.example", scripts: ["Latin", "Cyrillic"] },
+    ]);
+    expect(lookalikes("open https://g\u03BFogle.example/login")).toEqual([
+      { token: "https://g\u03BFogle.example/login", scripts: ["Latin", "Greek"] },
+    ]);
+    expect(lookalikes("host \u0430pple.example.")).toEqual([
+      { token: "\u0430pple.example.", scripts: ["Cyrillic", "Latin"] },
+    ]);
+  });
+
+  it("stays quiet for single-script addresses and for ordinary mixed text", () => {
+    expect(lookalikes("ops@evil.example and https://api.github.com")).toEqual([]);
+    expect(lookalikes("пример.рф")).toEqual([]);
+    expect(lookalikes("Привет John, see you")).toEqual([]);
+    expect(lookalikes("")).toEqual([]);
   });
 });

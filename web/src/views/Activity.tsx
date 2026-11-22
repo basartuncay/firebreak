@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { type AuditEvent, api, timeAgo } from "../api";
-import { ArgumentTable, DecisionChip, Findings } from "./Provenance";
+import { ArgumentTable, DecisionChip, Findings, Shown } from "./Provenance";
 
 export function Activity({ tick }: { tick: number }) {
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
@@ -95,10 +95,14 @@ function EventRow({ event: e, open, onToggle }: { event: AuditEvent; open: boole
         <DecisionChip decision={e.decision} approval={e.approval} />
         <span className="main">
           <span className="tool">
-            <span className="server">{e.server}/</span>
-            {e.tool}
+            <span className="server">
+              <Shown text={`${e.server}/`} />
+            </span>
+            <Shown text={e.tool} />
           </span>
-          <span className="line">{e.findings[0]?.message ?? "No rule applied."}</span>
+          <span className="line">
+            <Shown text={e.findings[0]?.message ?? "No rule applied."} />
+          </span>
         </span>
         <span className="rules">{rules}</span>
       </button>

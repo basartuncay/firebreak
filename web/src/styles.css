@@ -58,6 +58,26 @@ body {
   background: var(--mark);
   color: var(--ink);
 }
+/* Untrusted text cannot reorder Firebreak's own words around it */
+code,
+mark,
+.server,
+.name,
+.tool,
+.line,
+.msg,
+.who,
+.arg dt,
+.origin-label strong {
+  unicode-bidi: isolate;
+}
+pre,
+blockquote,
+.value,
+.desc {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
 code,
 pre,
 .mono {
@@ -837,4 +857,25 @@ del {
   margin: 6px 0 0;
   font-size: 14px;
   color: var(--ink);
+}
+.warn-line {
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--ink);
+  border-left: 3px solid var(--deny);
+  padding-left: 10px;
+}
+
+/* An invisible or reordering character, drawn as its code point */
+.cp {
+  font-family: var(--mono);
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--deny);
+  border: 1px solid currentColor;
+  padding: 0 2px;
+  margin: 0 1px;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  direction: ltr;
 }

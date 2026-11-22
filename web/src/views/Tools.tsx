@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Pin, timeAgo } from "../api";
 import { splitChange } from "../text";
+import { Shown } from "./Provenance";
 
 const REASONS: Record<string, string> = {
   "definition-changed": "definition changed after you approved it",
@@ -27,9 +28,13 @@ function Diff({ before, after }: { before: string; after: string }) {
         <pre>
           {before ? (
             <>
-              {a0}
-              {a1 && <del>{a1}</del>}
-              {a2}
+              <Shown text={a0 ?? ""} pre />
+              {a1 && (
+                <del>
+                  <Shown text={a1} pre />
+                </del>
+              )}
+              <Shown text={a2 ?? ""} pre />
             </>
           ) : (
             "(empty)"
@@ -41,9 +46,13 @@ function Diff({ before, after }: { before: string; after: string }) {
         <pre>
           {after ? (
             <>
-              {b0}
-              {b1 && <ins>{b1}</ins>}
-              {b2}
+              <Shown text={b0 ?? ""} pre />
+              {b1 && (
+                <ins>
+                  <Shown text={b1} pre />
+                </ins>
+              )}
+              <Shown text={b2 ?? ""} pre />
             </>
           ) : (
             "(empty)"
@@ -98,8 +107,10 @@ export function Tools({ tick, onChange }: { tick: number; onChange: () => void }
           {attention.map((p) => (
             <li key={`${p.server}/${p.name}`}>
               <h2>
-                <span className="server">{p.server}/</span>
-                {p.name}
+                <span className="server">
+                  <Shown text={`${p.server}/`} />
+                </span>
+                <Shown text={p.name} />
               </h2>
               <span className={`chip ${p.status === "quarantined" ? "deny" : "confirm"}`}>
                 {STATUS[p.status]}
@@ -112,7 +123,9 @@ export function Tools({ tick, onChange }: { tick: number; onChange: () => void }
               {p.status === "quarantined" && p.previousDescription !== undefined ? (
                 <Diff before={p.previousDescription} after={p.description} />
               ) : (
-                <pre className="desc">{p.description}</pre>
+                <pre className="desc">
+                  <Shown text={p.description} pre />
+                </pre>
               )}
               <button type="button" className="approve" onClick={() => approve(p)}>
                 {p.status === "quarantined" ? "Approve new version" : "Mark as reviewed"}
@@ -129,13 +142,17 @@ export function Tools({ tick, onChange }: { tick: number; onChange: () => void }
       ) : (
         servers.map((server) => (
           <div key={server} className="server-group">
-            <h2 className="sub">{server}</h2>
+            <h2 className="sub">
+              <Shown text={server} />
+            </h2>
             <ul className="index toollist">
               {tools
                 .filter((t) => t.server === server)
                 .map((t) => (
                   <li key={t.name}>
-                    <span className="name">{t.name}</span>
+                    <span className="name">
+                      <Shown text={t.name} />
+                    </span>
                     <span
                       className={`chip ${t.status === "pinned" ? "allow" : t.status === "quarantined" ? "deny" : "confirm"}`}
                     >
