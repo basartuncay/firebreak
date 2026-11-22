@@ -56,48 +56,73 @@ export function App() {
     document.title = stats?.pending ? `(${stats.pending}) Firebreak` : "Firebreak";
   }, [stats?.pending]);
 
+  const hasToken = Boolean(token());
+
   return (
     <div className="shell">
       <header className="top">
         <a className="brand" href="#approvals" aria-label="Firebreak home">
-          <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-            <rect width="32" height="32" rx="7" fill="var(--forest)" />
-            <path d="M8 8v16M16 8v16M24 8v16" stroke="var(--ember)" strokeWidth="3" strokeLinecap="round" />
+          <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+            <rect width="32" height="32" fill="var(--forest)" />
+            <path d="M8 8v16M16 8v16M24 8v16" stroke="var(--ember)" strokeWidth="3" />
           </svg>
           Firebreak
         </a>
+        <span className={`live ${offline || !hasToken ? "down" : ""}`} role="status">
+          {offline || !hasToken ? "Not connected" : "Live"}
+        </span>
         <nav aria-label="Views">
           {VIEWS.map((v) => (
             <a key={v} href={`#${v}`} aria-current={view === v ? "page" : undefined}>
               {LABELS[v]}
-              {v === "approvals" && stats?.pending ? <span className="badge">{stats.pending}</span> : null}
+              {v === "approvals" && stats?.pending ? (
+                <span className="count">
+                  {stats.pending}
+                  <span className="sr-only"> waiting</span>
+                </span>
+              ) : null}
               {v === "tools" && stats?.tools.quarantined ? (
-                <span className="badge warn">{stats.tools.quarantined}</span>
+                <span className="count warn">
+                  {stats.tools.quarantined}
+                  <span className="sr-only"> hidden</span>
+                </span>
               ) : null}
             </a>
           ))}
         </nav>
-        <span className={`live ${offline ? "down" : ""}`} role="status">
-          {offline ? "Not connected" : "Live"}
-        </span>
       </header>
-      {!token() && (
-        <p className="banner">
-          This page needs the access link printed by <code>firebreak ui</code> (it ends in{" "}
-          <code>?token=…</code>).
-        </p>
-      )}
-      {offline && token() && (
-        <p className="banner">
-          The dashboard lost its connection to <code>firebreak ui</code>. Check that it is still running, then
-          reload.
+      <p className="sr-only" aria-live="polite">
+        {stats?.pending
+          ? `${stats.pending} ${stats.pending === 1 ? "call is" : "calls are"} waiting for your decision.`
+          : ""}
+      </p>
+      {offline && hasToken && (
+        <p className="banner" role="alert">
+          <strong>Not connected.</strong> The dashboard lost its connection to <code>firebreak ui</code>.
+          Check that it is still running, then reload.
         </p>
       )}
       <main>
-        {view === "approvals" && <Approvals tick={tick} onChange={refresh} />}
-        {view === "activity" && <Activity tick={tick} />}
-        {view === "tools" && <Tools tick={tick} onChange={refresh} />}
-        {view === "overview" && <Overview stats={stats} />}
+        {!hasToken ? (
+          <section className="gate">
+            <h1>Open the link from your terminal</h1>
+            <p>
+              This page needs the access link printed by <code>firebreak ui</code> (it ends in{" "}
+              <code>?token=…</code>).
+            </p>
+            <p className="muted">
+              The link holds a key that changes each time <code>firebreak ui</code> starts. Run it again and
+              open the link it prints.
+            </p>
+          </section>
+        ) : (
+          <>
+            {view === "approvals" && <Approvals tick={tick} onChange={refresh} />}
+            {view === "activity" && <Activity tick={tick} />}
+            {view === "tools" && <Tools tick={tick} onChange={refresh} />}
+            {view === "overview" && <Overview stats={stats} />}
+          </>
+        )}
       </main>
     </div>
   );

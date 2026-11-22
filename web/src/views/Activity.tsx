@@ -55,61 +55,62 @@ export function Activity({ tick }: { tick: number }) {
           )}
         </div>
       ) : (
-        <table className="events">
-          <thead>
-            <tr>
-              <th scope="col">When</th>
-              <th scope="col">Tool</th>
-              <th scope="col">Outcome</th>
-              <th scope="col">Rules</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((e) => (
-              <EventRow
-                key={e.id}
-                event={e}
-                open={open === e.id}
-                onToggle={() => setOpen(open === e.id ? null : e.id)}
-              />
-            ))}
-          </tbody>
-        </table>
+        <ol className="index events">
+          {events.map((e) => (
+            <EventRow
+              key={e.id}
+              event={e}
+              open={open === e.id}
+              onToggle={() => setOpen(open === e.id ? null : e.id)}
+            />
+          ))}
+        </ol>
       )}
     </section>
   );
 }
 
+/** Wall-clock time, so a row reads the same while you look at it; the date is added for older days. */
+const clock = (iso: string): string => {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+};
+
 function EventRow({ event: e, open, onToggle }: { event: AuditEvent; open: boolean; onToggle: () => void }) {
+  const rules = [...new Set(e.findings.map((f) => f.rule))].join(" ");
   return (
-    <>
-      <tr className={open ? "open" : ""}>
-        <td className="muted" title={e.ts}>
-          {timeAgo(e.ts)}
-        </td>
-        <td>
-          <button type="button" className="link" aria-expanded={open} onClick={onToggle}>
+    <li>
+      <button type="button" className="row" aria-expanded={open} onClick={onToggle}>
+        <time className="when" dateTime={e.ts} title={`${e.ts} (${timeAgo(e.ts)})`}>
+          {clock(e.ts)}
+        </time>
+        <DecisionChip decision={e.decision} approval={e.approval} />
+        <span className="main">
+          <span className="tool">
             <span className="server">{e.server}/</span>
             {e.tool}
-          </button>
-        </td>
-        <td>
-          <DecisionChip decision={e.decision} approval={e.approval} />
-        </td>
-        <td className="rules">{[...new Set(e.findings.map((f) => f.rule))].join(" ")}</td>
-      </tr>
+          </span>
+          <span className="line">{e.findings[0]?.message ?? "No rule applied."}</span>
+        </span>
+        <span className="rules">{rules}</span>
+      </button>
       {open && (
-        <tr className="detail">
-          <td colSpan={4}>
-            {e.findings.length > 0 && <Findings findings={e.findings} />}
-            <ArgumentTable args={e.args} provenance={e.provenance} findings={e.findings} />
-            <p className="hash muted">
-              #{e.id} · {e.latencyMs ?? "–"} ms · result {e.resultBytes ?? 0} bytes · hash{" "}
-              <code>{e.hash.slice(0, 16)}…</code>
-            </p>
-          </td>
-        </tr>
+        <div className="detail">
+          {e.findings.length > 0 && <Findings findings={e.findings} />}
+          <ArgumentTable args={e.args} provenance={e.provenance} findings={e.findings} />
+          <p className="hash muted">
+            #{e.id} · {e.latencyMs ?? "–"} ms · result {e.resultBytes ?? 0} bytes · hash <code>{e.hash}</code>
+          </p>
+        </div>
       )}
-    </>
+    </li>
   );
 }

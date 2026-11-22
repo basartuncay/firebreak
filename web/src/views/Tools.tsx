@@ -14,6 +14,57 @@ const STATUS: Record<Pin["status"], string> = {
   quarantined: "Hidden until you approve",
 };
 
+/** Before and after, with the changed middle marked: a common start and end are kept plain. */
+function Diff({ before, after }: { before: string; after: string }) {
+  // shortcut: one changed span per side (common prefix/suffix by word); a real word diff if edits get scattered.
+  const a = before.split(/(\s+)/);
+  const b = after.split(/(\s+)/);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let end = 0;
+  while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end])
+    end++;
+  const part = (w: string[]) => [
+    w.slice(0, start).join(""),
+    w.slice(start, w.length - end).join(""),
+    w.slice(w.length - end).join(""),
+  ];
+  const [a0, a1, a2] = part(a);
+  const [b0, b1, b2] = part(b);
+  return (
+    <div className="diff">
+      <div>
+        <h3>Approved before</h3>
+        <pre>
+          {before ? (
+            <>
+              {a0}
+              {a1 && <del>{a1}</del>}
+              {a2}
+            </>
+          ) : (
+            "(empty)"
+          )}
+        </pre>
+      </div>
+      <div>
+        <h3>Now</h3>
+        <pre>
+          {after ? (
+            <>
+              {b0}
+              {b1 && <ins>{b1}</ins>}
+              {b2}
+            </>
+          ) : (
+            "(empty)"
+          )}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export function Tools({ tick, onChange }: { tick: number; onChange: () => void }) {
   const [tools, setTools] = useState<Pin[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,41 +104,34 @@ export function Tools({ tick, onChange }: { tick: number; onChange: () => void }
           {error}
         </p>
       )}
-      {attention.map((p) => (
-        <article key={`${p.server}/${p.name}`} className={`card tool ${p.status}`}>
-          <header>
-            <h2>
-              <span className="server">{p.server}/</span>
-              {p.name}
-            </h2>
-            <span className={`chip ${p.status === "quarantined" ? "deny" : "confirm"}`}>
-              {STATUS[p.status]}
-            </span>
-          </header>
-          <ul className="reasons">
-            {p.reasons.map((r) => (
-              <li key={r}>{REASONS[r] ?? r}</li>
-            ))}
-          </ul>
-          {p.status === "quarantined" && p.previousDescription !== undefined ? (
-            <div className="diff">
-              <div>
-                <h3>Approved before</h3>
-                <pre>{p.previousDescription || "(empty)"}</pre>
-              </div>
-              <div>
-                <h3>Now</h3>
-                <pre>{p.description || "(empty)"}</pre>
-              </div>
-            </div>
-          ) : (
-            <pre className="desc">{p.description}</pre>
-          )}
-          <button type="button" className="approve" onClick={() => approve(p)}>
-            {p.status === "quarantined" ? "Approve new version" : "Mark as reviewed"}
-          </button>
-        </article>
-      ))}
+      {attention.length > 0 && (
+        <ol className="index attention">
+          {attention.map((p) => (
+            <li key={`${p.server}/${p.name}`}>
+              <h2>
+                <span className="server">{p.server}/</span>
+                {p.name}
+              </h2>
+              <span className={`chip ${p.status === "quarantined" ? "deny" : "confirm"}`}>
+                {STATUS[p.status]}
+              </span>
+              <ul className="reasons">
+                {p.reasons.map((r) => (
+                  <li key={r}>{REASONS[r] ?? r}</li>
+                ))}
+              </ul>
+              {p.status === "quarantined" && p.previousDescription !== undefined ? (
+                <Diff before={p.previousDescription} after={p.description} />
+              ) : (
+                <pre className="desc">{p.description}</pre>
+              )}
+              <button type="button" className="approve" onClick={() => approve(p)}>
+                {p.status === "quarantined" ? "Approve new version" : "Mark as reviewed"}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
       {servers.length === 0 ? (
         <div className="empty">
           <p>No tools pinned yet.</p>
@@ -97,15 +141,18 @@ export function Tools({ tick, onChange }: { tick: number; onChange: () => void }
         servers.map((server) => (
           <div key={server} className="server-group">
             <h2 className="sub">{server}</h2>
-            <ul className="toollist">
+            <ul className="index toollist">
               {tools
                 .filter((t) => t.server === server)
                 .map((t) => (
                   <li key={t.name}>
-                    <span className={`dot ${t.status}`} aria-hidden="true" />
                     <span className="name">{t.name}</span>
-                    <span className="muted">{STATUS[t.status]}</span>
-                    <span className="muted right">first seen {timeAgo(t.firstSeen)}</span>
+                    <span
+                      className={`chip ${t.status === "pinned" ? "allow" : t.status === "quarantined" ? "deny" : "confirm"}`}
+                    >
+                      {STATUS[t.status]}
+                    </span>
+                    <span className="seen">first seen {timeAgo(t.firstSeen)}</span>
                   </li>
                 ))}
             </ul>

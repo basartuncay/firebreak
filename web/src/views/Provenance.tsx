@@ -1,7 +1,7 @@
 import type { ArgProvenance, Finding } from "../api";
 
-/** Renders the snippet with the matched value highlighted, so the user sees the exact origin. */
-function Highlighted({ snippet, value }: { snippet: string; value: string }) {
+/** Renders the text with the matched value highlighted, so the user sees the exact origin. */
+export function Highlighted({ snippet, value }: { snippet: string; value: string }) {
   const lower = snippet.toLowerCase();
   const needle = value.toLowerCase().replace(/\s+/g, " ").trim();
   let at = lower.indexOf(needle);
@@ -25,6 +25,32 @@ function Highlighted({ snippet, value }: { snippet: string; value: string }) {
       <mark>{snippet.slice(at, at + len)}</mark>
       {snippet.slice(at + len)}
     </>
+  );
+}
+
+/**
+ * The gateway stores a window around the match and marks its cut ends with "…". Those ends are shown
+ * as labelled markers, so they never read as part of the source text.
+ */
+function SourceExcerpt({ snippet, value }: { snippet: string; value: string }) {
+  const before = snippet.startsWith("…");
+  const after = snippet.endsWith("…") && snippet.length > 1;
+  const body = snippet.slice(before ? 1 : 0, after ? -1 : undefined);
+  return (
+    <blockquote>
+      {before && (
+        <span className="cut" title="The source continues before this excerpt">
+          […]{" "}
+        </span>
+      )}
+      <Highlighted snippet={body} value={value} />
+      {after && (
+        <span className="cut" title="The source continues after this excerpt">
+          {" "}
+          […]
+        </span>
+      )}
+    </blockquote>
   );
 }
 
@@ -61,11 +87,14 @@ export function ArgumentTable({
         const isFlagged = [...flagged].some(
           (p) => p === key || p?.startsWith(`${key}[`) || p?.startsWith(`${key}.`),
         );
+        const text = pretty(value);
+        // shortcut: marks the first traced value only; several traced paths inside one argument show one mark.
+        const traced = isFlagged ? sources[0]?.value : undefined;
         return (
           <div key={key} className={`arg ${isFlagged ? "flagged" : ""}`}>
             <dt>{key}</dt>
             <dd>
-              <pre className="value">{pretty(value)}</pre>
+              <pre className="value">{traced ? <Highlighted snippet={text} value={traced} /> : text}</pre>
               {sources.map((p) =>
                 p.sources.slice(0, 2).map((s) => (
                   <div className={`origin ${s.label}`} key={`${p.path}-${s.callId}`}>
@@ -76,9 +105,7 @@ export function ArgumentTable({
                       </strong>{" "}
                       ({s.label === "private" ? "your private data" : "untrusted output"})
                     </span>
-                    <blockquote>
-                      <Highlighted snippet={s.snippet} value={p.value} />
-                    </blockquote>
+                    <SourceExcerpt snippet={s.snippet} value={p.value} />
                   </div>
                 )),
               )}

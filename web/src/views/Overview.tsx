@@ -16,42 +16,34 @@ export function Overview({ stats }: { stats: Stats | null }) {
     api.chain().then(setChain, () => {});
   }, []);
   if (!stats) return <p className="muted">Loading…</p>;
-  const max = Math.max(1, ...Object.values(stats.rules));
   const d = stats.decisions;
+  const numbers: [number, string][] = [
+    [stats.total, "tool calls checked"],
+    [d.allow ?? 0, "allowed straight through"],
+    [d.confirm ?? 0, "needed your approval"],
+    [d.deny ?? 0, "blocked outright"],
+  ];
   return (
     <section>
       <h1>Last 24 hours</h1>
-      <div className="numbers">
-        <div>
-          <span className="n">{stats.total}</span>
-          <span className="l">tool calls checked</span>
-        </div>
-        <div>
-          <span className="n">{d.allow ?? 0}</span>
-          <span className="l">allowed straight through</span>
-        </div>
-        <div>
-          <span className="n">{d.confirm ?? 0}</span>
-          <span className="l">needed your approval</span>
-        </div>
-        <div>
-          <span className="n">{d.deny ?? 0}</span>
-          <span className="l">blocked outright</span>
-        </div>
-      </div>
+      <dl className="numbers">
+        {numbers.map(([n, label]) => (
+          <div key={label}>
+            <dt className="label">{label}</dt>
+            <dd className="big">{n}</dd>
+          </div>
+        ))}
+      </dl>
 
       <h2 className="sub">Why calls were stopped</h2>
-      <ul className="bars">
+      <ul className="index rules-list">
         {RULES.map(([id, label]) => {
           const n = stats.rules[id] ?? 0;
           return (
             <li key={id}>
               <span className="rule">{id}</span>
               <span className="label">{label}</span>
-              <span className="bar" aria-hidden="true">
-                <span style={{ width: `${(n / max) * 100}%` }} />
-              </span>
-              <span className="count">{n}</span>
+              <span className={`n ${n === 0 ? "zero" : ""}`}>{n}</span>
             </li>
           );
         })}
@@ -61,12 +53,12 @@ export function Overview({ stats }: { stats: Stats | null }) {
       {!chain ? (
         <p className="muted">Checking…</p>
       ) : chain.ok ? (
-        <p>
+        <p className="chain">
           <span className="chip allow">intact</span> {chain.count} events, every hash links to the one before
           it.
         </p>
       ) : (
-        <p role="alert">
+        <p className="chain" role="alert">
           <span className="chip deny">broken</span> Event #{chain.brokenAt} or an earlier one was changed or
           deleted outside Firebreak.
         </p>
