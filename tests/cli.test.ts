@@ -3,18 +3,11 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { openStore } from "../src/store/db.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CLI = join(ROOT, "dist/cli.js");
-
-beforeAll(() => {
-  // vitest sets NODE_ENV=test, which would make vite write a development bundle into dist/web.
-  const env = { ...process.env, NODE_ENV: "production" };
-  const build = spawnSync("npm", ["run", "build"], { cwd: ROOT, encoding: "utf8", env });
-  if (build.status !== 0) throw new Error(build.stdout + build.stderr);
-}, 60_000);
 
 function run(args: string[], home: string) {
   return spawnSync(process.execPath, [CLI, ...args], {
@@ -29,7 +22,7 @@ describe("cli", () => {
   it("init writes policy.yaml", () => {
     const home = freshHome();
     const r = run(["init"], home);
-    expect(r.status).toBe(0);
+    expect(r.status, r.stderr).toBe(0);
     expect(existsSync(join(home, "policy.yaml"))).toBe(true);
     expect(readFileSync(join(home, "policy.yaml"), "utf8")).toContain("F1: confirm");
   });
@@ -47,7 +40,7 @@ describe("cli", () => {
     });
     expect(run(["approvals"], home).stdout).toContain(`#${a.id}`);
     const r = run(["approve", String(a.id)], home);
-    expect(r.status).toBe(0);
+    expect(r.status, r.stderr).toBe(0);
     expect(store.approvals.get(a.id)?.status).toBe("approved");
     expect(run(["deny", String(a.id)], home).status).toBe(1);
   });
@@ -65,7 +58,7 @@ describe("cli", () => {
       findings: [],
     });
     const r = run(["audit", "verify"], home);
-    expect(r.status).toBe(0);
+    expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toContain("1 events");
     expect(run(["audit", "tail"], home).stdout).toContain("mail/send_email");
   });
@@ -77,13 +70,13 @@ describe("cli", () => {
       [CLI, "wrap", "--policy", join(ROOT, "tests/fixtures/bad-policy.yaml"), "--", "node", "-e", "1"],
       { encoding: "utf8", env: { ...process.env, FIREBREAK_HOME: home } },
     );
-    expect(r.status).toBe(2);
+    expect(r.status, r.stderr).toBe(2);
     expect(r.stderr).toContain("rules.F3");
   });
 
   it("unknown command exits 2 with usage", () => {
     const r = run(["frobnicate"], freshHome());
-    expect(r.status).toBe(2);
+    expect(r.status, r.stderr).toBe(2);
     expect(r.stderr).toContain("Usage:");
   });
 

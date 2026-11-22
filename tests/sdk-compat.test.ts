@@ -1,21 +1,13 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 let client: Client | undefined;
-
-beforeAll(() => {
-  // vitest sets NODE_ENV=test, which would make vite write a development bundle into dist/web.
-  const env = { ...process.env, NODE_ENV: "production" };
-  const build = spawnSync("npm", ["run", "build"], { cwd: ROOT, encoding: "utf8", env });
-  if (build.status !== 0) throw new Error(build.stdout + build.stderr);
-}, 60_000);
 
 afterEach(async () => {
   await client?.close();
