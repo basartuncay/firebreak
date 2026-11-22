@@ -42,7 +42,8 @@ firebreak ui                     # open the dashboard, then restart your MCP cli
 `install` rewrites each stdio server entry so it runs behind `firebreak wrap`, keeping its `env`, and
 writes a timestamped backup next to the file; `firebreak uninstall` restores the originals exactly.
 Entries point at this installation by absolute path (desktop apps often do not see your shell's
-`PATH`); pass `--npx` to use `npx -y mcp-firebreak` instead. To wrap one server by hand:
+`PATH`); pass `--npx` to use `npx -y mcp-firebreak` instead (that only works once the package is on npm,
+which it is not yet). To wrap one server by hand:
 
 ```json
 {
