@@ -4,10 +4,10 @@ Until then the README must keep saying "install from source".
     git apply docs/release/readme-npm-install.patch
 
 diff --git a/README.md b/README.md
-index 1744426..3db429a 100644
+index 2609a90..bc98c0b 100644
 --- a/README.md
 +++ b/README.md
-@@ -30,10 +30,11 @@ No model is involved in any decision. Every rule is deterministic and explains i
+@@ -99,10 +99,11 @@ matched value, with `[…]` where it was cut. The argument you approve is always
  
  ## Quick start
  
@@ -20,7 +20,7 @@ index 1744426..3db429a 100644
  firebreak install --dry-run      # see which MCP servers would be wrapped
  firebreak install                # wrap them (Claude Desktop, Claude Code ./.mcp.json, Cursor), with a backup
  firebreak ui                     # open the dashboard, then restart your MCP client
-@@ -42,8 +43,7 @@ firebreak ui                     # open the dashboard, then restart your MCP cli
+@@ -111,8 +112,7 @@ firebreak ui                     # open the dashboard, then restart your MCP cli
  `install` rewrites each stdio server entry so it runs behind `firebreak wrap`, keeping its `env`, and
  writes a timestamped backup next to the file; `firebreak uninstall` restores the originals exactly.
  Entries point at this installation by absolute path (desktop apps often do not see your shell's
