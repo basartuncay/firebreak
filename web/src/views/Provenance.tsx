@@ -67,6 +67,10 @@ function ValueWarnings({ text }: { text: string }) {
   );
 }
 
+// The dashboard cannot tell the gateway's cut from a "…" in the source itself, so it does not claim either.
+const CUT_TITLE =
+  "Probably cut here: Firebreak marks a shortened excerpt with “…”, but the source text itself may also contain “…”.";
+
 /**
  * The gateway stores a window around the match and marks its cut ends with "…". Those ends are shown
  * as labelled markers, so they never read as part of the source text.
@@ -80,15 +84,15 @@ function SourceExcerpt({ snippet, value }: { snippet: string; value: string }) {
     <>
       <blockquote>
         {before && (
-          <span className="cut" title="The source continues before this excerpt">
-            […]{" "}
+          <span className="cut" title={CUT_TITLE}>
+            […?]{" "}
           </span>
         )}
         <Marked text={body} ranges={range ? [range] : []} />
         {after && (
-          <span className="cut" title="The source continues after this excerpt">
+          <span className="cut" title={CUT_TITLE}>
             {" "}
-            […]
+            […?]
           </span>
         )}
       </blockquote>

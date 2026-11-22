@@ -54,6 +54,19 @@ dashboard and rendered.
   so redact the snippet with the same function before it is stored, and say in the threat model that
   excerpts of tool output are kept in the audit log.
 
+## Send explicit cut flags
+
+The dashboard finds the cut ends by looking for a leading or trailing "…" in `snippet`. Source text
+that itself starts or ends with "…" looks the same, so an attacker can make an excerpt look cut (or hide
+that it is complete). Since the dashboard cannot tell, its marker reads `[…?]` with the title "Probably
+cut here". With the wider excerpt, store the cut as data instead of as a character: for example
+`{ snippet, cutBefore: boolean, cutAfter: boolean }` (old rows without the flags keep today's reading),
+and let the dashboard draw `[…]` only from the flags. The same object could carry the offsets of the
+matched text inside the snippet (`matchAt`, `matchLength`), so the dashboard marks exactly what the
+gateway matched instead of searching for the value again: today an atom matched inside a longer value
+(an address in a sentence) cannot be marked, because the dashboard only marks the whole value or its start
+or end at a cut edge.
+
 ## Acceptance check
 
 - In `tests/taint.test.ts`: a value inside a sentence returns that whole sentence; a value in a very long
@@ -61,6 +74,8 @@ dashboard and rendered.
   end of the text has no marker on that side; a value that spans a line break is still found.
 - A secret pattern inside the widened excerpt is redacted in the stored approval and audit event.
 - The excerpt for `examples/demo-mail-server.mjs` (email `m2`) starts at "Our accounts team has moved"
-  and ends at "rather than to this address."; a long value such as the board memo is held whole; the dashboard needs no change, its `[…]` markers still apply.
+  and ends at "rather than to this address."; a long value such as the board memo is held whole; the dashboard draws its cut markers from the new flags.
+- An excerpt whose source text starts with "…" is stored with `cutBefore: false`, and the dashboard
+  shows no cut marker for it.
 - `npm test` passes without changing the snapshot in `tests/testsuite.test.ts`: decisions must not move.
 - `npm run lint`, `npm run typecheck`, `npm run build` pass; `CHANGELOG.md` notes the change.
