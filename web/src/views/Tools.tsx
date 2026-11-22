@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Pin, timeAgo } from "../api";
+import { splitChange } from "../text";
 
 const REASONS: Record<string, string> = {
   "definition-changed": "definition changed after you approved it",
@@ -16,21 +17,9 @@ const STATUS: Record<Pin["status"], string> = {
 
 /** Before and after, with the changed middle marked: a common start and end are kept plain. */
 function Diff({ before, after }: { before: string; after: string }) {
-  // shortcut: one changed span per side (common prefix/suffix by word); a real word diff if edits get scattered.
-  const a = before.split(/(\s+)/);
-  const b = after.split(/(\s+)/);
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start++;
-  let end = 0;
-  while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end])
-    end++;
-  const part = (w: string[]) => [
-    w.slice(0, start).join(""),
-    w.slice(start, w.length - end).join(""),
-    w.slice(w.length - end).join(""),
-  ];
-  const [a0, a1, a2] = part(a);
-  const [b0, b1, b2] = part(b);
+  const parts = splitChange(before, after);
+  const [a0, a1, a2] = parts.before;
+  const [b0, b1, b2] = parts.after;
   return (
     <div className="diff">
       <div>

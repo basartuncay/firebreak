@@ -1,35 +1,11 @@
 import type { ArgProvenance, Finding } from "../api";
+import { markRange } from "../text";
 
 /** Renders the text with the matched value highlighted, so the user sees the exact origin. */
 export function Highlighted({ snippet, value }: { snippet: string; value: string }) {
-  const lower = snippet.toLowerCase();
-  const needle = value.toLowerCase().replace(/\s+/g, " ").trim();
-  let at = lower.indexOf(needle);
-  let len = needle.length;
-  if (at < 0) {
-    // The stored excerpt can end inside the value: highlight the longest start or end of the value it holds.
-    for (let n = needle.length - 1; n >= 12 && at < 0; n--) {
-      const head = lower.indexOf(needle.slice(0, n));
-      const tail = lower.indexOf(needle.slice(-n));
-      if (head >= 0 || tail >= 0) {
-        at = head >= 0 ? head : tail;
-        len = n;
-      }
-    }
-  }
-  if (at < 0) {
-    // The value contained an atom (an address, a URL): highlight the longest token of the value found.
-    const token = needle
-      .split(/[\s,;]+/)
-      .filter((t) => t.length >= 6)
-      .sort((a, b) => b.length - a.length)
-      .find((t) => lower.includes(t));
-    if (token) {
-      at = lower.indexOf(token);
-      len = token.length;
-    }
-  }
-  if (at < 0) return <>{snippet}</>;
+  const range = markRange(snippet, value);
+  if (!range) return <>{snippet}</>;
+  const { at, len } = range;
   return (
     <>
       {snippet.slice(0, at)}
