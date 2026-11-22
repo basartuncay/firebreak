@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -112,5 +112,23 @@ describe("ui server", () => {
     const res = await authed("/api/tools/mail/send_email/approve", { method: "POST" });
     expect(res.status).toBe(200);
     expect(store.pins.list()[0]!.status).toBe("pinned");
+  });
+
+  it("sends security headers on the page, on API responses and on refusals", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "firebreak-ui-web-"));
+    writeFileSync(join(dir, "index.html"), "<!doctype html><title>t</title>");
+    const withPage = createUiApp(store, { token: TOKEN, staticDir: dir });
+    const page = await withPage.request("/", { headers: { host: "127.0.0.1:4319" } });
+    const api = await authed("/api/stats");
+    const refused = await app.request("/api/stats", { headers: { host: "127.0.0.1:4319" } });
+    expect([page.status, api.status, refused.status]).toEqual([200, 200, 401]);
+    for (const res of [page, api, refused]) {
+      expect(res.headers.get("content-security-policy")).toBe(
+        "default-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      );
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+    }
   });
 });
