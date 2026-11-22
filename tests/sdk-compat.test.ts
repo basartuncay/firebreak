@@ -11,7 +11,9 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 let client: Client | undefined;
 
 beforeAll(() => {
-  const build = spawnSync("npm", ["run", "build"], { cwd: ROOT, encoding: "utf8" });
+  // vitest sets NODE_ENV=test, which would make vite write a development bundle into dist/web.
+  const env = { ...process.env, NODE_ENV: "production" };
+  const build = spawnSync("npm", ["run", "build"], { cwd: ROOT, encoding: "utf8", env });
   if (build.status !== 0) throw new Error(build.stdout + build.stderr);
 }, 60_000);
 
