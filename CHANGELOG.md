@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
 
-First release.
+First version on npm.
+
+- The package ships without source maps, and `dist/cli.js` is executable in the tarball.
+- The dashboard honours `prefers-reduced-motion`.
+
+## 0.1.0 (2026-11-09)
+
+First release, on GitHub only.
 
 - `firebreak wrap`: protocol-version-agnostic stdio proxy for MCP servers.
 - Provenance tracking by value matching across a session, including short identifiers in destination

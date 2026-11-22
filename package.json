@@ -1,6 +1,6 @@
 {
   "name": "mcp-firebreak",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Provenance-aware security gateway for MCP: stops untrusted tool output from turning into agent actions.",
   "license": "MIT",
   "author": "Basar Tuncay",
