@@ -65,8 +65,8 @@ FIREBREAK_HOME=/tmp/fb npx tsx scripts/seed-demo.ts && FIREBREAK_HOME=/tmp/fb no
   to measure friction, so realistic benign tasks are especially useful. Write the `expect` you believe is
   right; if Firebreak gets it wrong today, mark it `knownMiss: true` with a note.
 - **One of the documented limits.** The README's "Limits" section and the "ten attacks that get through"
-  in `docs/results.md` describe what Firebreak misses and why. Three scoped starting points are written
-  up in [docs/issue-drafts/](docs/issue-drafts/).
+  in `docs/results.md` describe what Firebreak misses and why. Scoped starting points for these, and
+  one for the evidence shown to approvers, are in [docs/issue-drafts/](docs/issue-drafts/).
 - **Documentation** that is wrong or unclear, with the command or file that shows it.
 
 Where things live: `src/provenance/` (what is remembered from tool results), `src/policy/` and
