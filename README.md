@@ -95,7 +95,8 @@ output: names the agent used before reading anything untrusted (the repository y
 trusted.
 
 The approval screen shows the source excerpt the gateway stored: about 30 characters on each side of the
-matched value, with `[…]` where it was cut. The argument you approve is always shown in full.
+matched value, with `[…?]` where it was probably cut (the source text itself may also contain `…`). The
+argument you approve is always shown in full.
 
 ## Quick start
 
